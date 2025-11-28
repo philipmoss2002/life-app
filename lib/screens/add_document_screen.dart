@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
+import '../services/notification_service.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   const AddDocumentScreen({super.key});
@@ -63,11 +64,31 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         notes: _notesController.text.isEmpty ? null : _notesController.text,
       );
 
-      await DatabaseService.instance.createDocument(document);
+      final id = await DatabaseService.instance.createDocument(document);
+
+      // Schedule notification if renewal date is set
+      if (renewalDate != null) {
+        await NotificationService.instance.scheduleRenewalReminder(
+          id,
+          _titleController.text,
+          renewalDate!,
+        );
+      }
 
       if (mounted) {
         Navigator.pop(context);
       }
+    }
+  }
+
+  String _getDateLabel(String category) {
+    switch (category) {
+      case 'Holiday':
+        return 'Payment Due';
+      case 'Other':
+        return 'Date';
+      default:
+        return 'Renewal Date';
     }
   }
 
@@ -115,9 +136,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             ),
             const SizedBox(height: 16),
             ListTile(
-              title: Text(selectedCategory == 'Holiday'
-                  ? 'Payment Due'
-                  : 'Renewal Date'),
+              title: Text(_getDateLabel(selectedCategory)),
               subtitle: Text(
                 renewalDate != null
                     ? '${renewalDate!.day}/${renewalDate!.month}/${renewalDate!.year}'

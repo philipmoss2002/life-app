@@ -223,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(doc.category),
                 if (doc.renewalDate != null)
                   Text(
-                    '${doc.category == 'Holiday' ? 'Payment Due' : 'Renewal'}: ${_formatDate(doc.renewalDate!)}',
+                    '${_getDateLabel(doc.category)}: ${_formatDate(doc.renewalDate!)}',
                     style: TextStyle(
                       color:
                           _isRenewalSoon(doc.renewalDate!) ? Colors.red : null,
@@ -269,5 +269,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isRenewalSoon(DateTime renewalDate) {
     final daysUntilRenewal = renewalDate.difference(DateTime.now()).inDays;
     return daysUntilRenewal <= 30 && daysUntilRenewal >= 0;
+  }
+
+  String _getDateLabel(String category) {
+    switch (category) {
+      case 'Holiday':
+        return 'Payment Due';
+      case 'Other':
+        return 'Date';
+      default:
+        return 'Renewal';
+    }
   }
 }

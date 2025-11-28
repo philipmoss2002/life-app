@@ -121,7 +121,7 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '${doc.category == 'Holiday' ? 'Payment' : 'Renewal'} Due: ${_formatDate(doc.renewalDate!)}',
+                      '${_getDatePrefix(doc.category)} Due: ${_formatDate(doc.renewalDate!)}',
                       style: TextStyle(
                         color: isUrgent ? Colors.red : Colors.orange,
                         fontWeight: FontWeight.w500,
@@ -180,5 +180,16 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
     if (days == 1) return 'Due tomorrow!';
     if (days <= 7) return 'Due in $days days - Urgent!';
     return 'Due in $days days';
+  }
+
+  String _getDatePrefix(String category) {
+    switch (category) {
+      case 'Holiday':
+        return 'Payment';
+      case 'Other':
+        return '';
+      default:
+        return 'Renewal';
+    }
   }
 }

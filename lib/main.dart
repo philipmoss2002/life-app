@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:timezone/data/latest.dart' as tz;
 import 'screens/home_screen.dart';
 import 'services/database_service.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize timezone data
+  tz.initializeTimeZones();
+
+  // Initialize database
   await DatabaseService.instance.database;
+
+  // Initialize notifications
+  await NotificationService.instance.initialize();
+
   runApp(const HouseholdDocsApp());
 }
 

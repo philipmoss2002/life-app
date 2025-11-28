@@ -11,11 +11,38 @@ class NotificationService {
   Future<void> initialize() async {
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings();
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
     const settings =
         InitializationSettings(android: androidSettings, iOS: iosSettings);
 
     await _notifications.initialize(settings);
+
+    // Request permissions for Android 13+
+    await _requestPermissions();
+  }
+
+  Future<void> _requestPermissions() async {
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidPlugin != null) {
+      await androidPlugin.requestNotificationsPermission();
+    }
+
+    final iosPlugin = _notifications.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+
+    if (iosPlugin != null) {
+      await iosPlugin.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
   }
 
   Future<void> scheduleRenewalReminder(

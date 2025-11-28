@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
+import '../services/notification_service.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
   final Document document;
@@ -79,6 +80,16 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       );
 
       await DatabaseService.instance.updateDocument(updatedDocument);
+
+      // Cancel old notification and schedule new one if renewal date is set
+      await NotificationService.instance.cancelReminder(widget.document.id!);
+      if (renewalDate != null) {
+        await NotificationService.instance.scheduleRenewalReminder(
+          widget.document.id!,
+          _titleController.text,
+          renewalDate!,
+        );
+      }
 
       setState(() => isEditing = false);
 
@@ -161,9 +172,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               ),
               const SizedBox(height: 16),
               ListTile(
-                title: Text(selectedCategory == 'Holiday'
-                    ? 'Payment Due'
-                    : 'Renewal Date'),
+                title: Text(_getDateLabel(selectedCategory)),
                 subtitle: Text(
                   renewalDate != null
                       ? '${renewalDate!.day}/${renewalDate!.month}/${renewalDate!.year}'
@@ -237,9 +246,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               _buildInfoCard('Category', widget.document.category),
               if (widget.document.renewalDate != null)
                 _buildInfoCard(
-                  widget.document.category == 'Holiday'
-                      ? 'Payment Due'
-                      : 'Renewal Date',
+                  _getDateLabel(widget.document.category),
                   '${widget.document.renewalDate!.day}/${widget.document.renewalDate!.month}/${widget.document.renewalDate!.year}',
                 ),
               if (widget.document.filePath != null)
@@ -367,6 +374,17 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     }
   }
 
+  String _getDateLabel(String category) {
+    switch (category) {
+      case 'Holiday':
+        return 'Payment Due';
+      case 'Other':
+        return 'Date';
+      default:
+        return 'Renewal Date';
+    }
+  }
+
   Future<void> _deleteDocument() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -388,6 +406,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
     if (confirmed == true && mounted) {
       await DatabaseService.instance.deleteDocument(widget.document.id!);
+      await NotificationService.instance.cancelReminder(widget.document.id!);
       if (mounted) {
         Navigator.pop(context);
       }
