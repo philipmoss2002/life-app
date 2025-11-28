@@ -90,8 +90,13 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
           margin: const EdgeInsets.only(bottom: 12),
           color: isUrgent ? Colors.red[50] : null,
           child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: isUrgent ? Colors.red : Colors.orange,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isUrgent ? Colors.red : Colors.orange,
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Icon(
                 _getCategoryIcon(doc.category),
                 color: Colors.white,
@@ -116,7 +121,7 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Due: ${_formatDate(doc.renewalDate!)}',
+                      '${doc.category == 'Holiday' ? 'Payment' : 'Renewal'} Due: ${_formatDate(doc.renewalDate!)}',
                       style: TextStyle(
                         color: isUrgent ? Colors.red : Colors.orange,
                         fontWeight: FontWeight.w500,
@@ -159,6 +164,8 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
         return Icons.directions_car;
       case 'Mortgage':
         return Icons.account_balance;
+      case 'Holiday':
+        return Icons.flight_takeoff;
       default:
         return Icons.description;
     }

@@ -23,6 +23,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     'Home Insurance',
     'Car Insurance',
     'Mortgage',
+    'Holiday',
     'Other',
   ];
 
@@ -114,7 +115,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             ),
             const SizedBox(height: 16),
             ListTile(
-              title: const Text('Renewal Date'),
+              title: Text(selectedCategory == 'Holiday'
+                  ? 'Payment Due'
+                  : 'Renewal Date'),
               subtitle: Text(
                 renewalDate != null
                     ? '${renewalDate!.day}/${renewalDate!.month}/${renewalDate!.year}'

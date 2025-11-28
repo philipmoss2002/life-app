@@ -18,6 +18,7 @@ class _HomeScreenState extends State<HomeScreen> {
     'Home Insurance',
     'Car Insurance',
     'Mortgage',
+    'Holiday',
     'Other',
   ];
   String selectedCategory = 'All';
@@ -46,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Household Documents'),
+        title: const Text('Your Documents'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -203,8 +204,17 @@ class _HomeScreenState extends State<HomeScreen> {
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: ListTile(
-            leading: CircleAvatar(
-              child: Icon(_getCategoryIcon(doc.category)),
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _getCategoryIcon(doc.category),
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
             title: Text(doc.title),
             subtitle: Column(
@@ -213,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(doc.category),
                 if (doc.renewalDate != null)
                   Text(
-                    'Renewal: ${_formatDate(doc.renewalDate!)}',
+                    '${doc.category == 'Holiday' ? 'Payment Due' : 'Renewal'}: ${_formatDate(doc.renewalDate!)}',
                     style: TextStyle(
                       color:
                           _isRenewalSoon(doc.renewalDate!) ? Colors.red : null,
@@ -245,6 +255,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return Icons.directions_car;
       case 'Mortgage':
         return Icons.account_balance;
+      case 'Holiday':
+        return Icons.flight_takeoff;
       default:
         return Icons.description;
     }
