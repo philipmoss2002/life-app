@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
+import 'document_detail_screen.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   const AddDocumentScreen({super.key});
@@ -68,15 +69,36 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
       // Schedule notification if renewal date is set
       if (renewalDate != null) {
-        await NotificationService.instance.scheduleRenewalReminder(
-          id,
-          _titleController.text,
-          renewalDate!,
-        );
+        try {
+          await NotificationService.instance.scheduleRenewalReminder(
+            id,
+            _titleController.text,
+            renewalDate!,
+          );
+        } catch (e) {
+          // Notification scheduling failed, but continue with navigation
+          debugPrint('Failed to schedule notification: $e');
+        }
       }
 
       if (mounted) {
-        Navigator.pop(context);
+        // Create the saved document with the ID
+        final savedDocument = Document(
+          id: id,
+          title: _titleController.text,
+          category: selectedCategory,
+          filePath: filePath,
+          renewalDate: renewalDate,
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+        );
+
+        // Replace the add screen with the detail screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DocumentDetailScreen(document: savedDocument),
+          ),
+        );
       }
     }
   }

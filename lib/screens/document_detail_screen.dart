@@ -82,13 +82,18 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       await DatabaseService.instance.updateDocument(updatedDocument);
 
       // Cancel old notification and schedule new one if renewal date is set
-      await NotificationService.instance.cancelReminder(widget.document.id!);
-      if (renewalDate != null) {
-        await NotificationService.instance.scheduleRenewalReminder(
-          widget.document.id!,
-          _titleController.text,
-          renewalDate!,
-        );
+      try {
+        await NotificationService.instance.cancelReminder(widget.document.id!);
+        if (renewalDate != null) {
+          await NotificationService.instance.scheduleRenewalReminder(
+            widget.document.id!,
+            _titleController.text,
+            renewalDate!,
+          );
+        }
+      } catch (e) {
+        // Notification scheduling failed, but continue
+        debugPrint('Failed to update notification: $e');
       }
 
       setState(() => isEditing = false);
