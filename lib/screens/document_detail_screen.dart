@@ -123,6 +123,16 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               icon: const Icon(Icons.delete),
               onPressed: _deleteDocument,
             ),
+          if (!isEditing)
+            TextButton(
+              onPressed: () {
+                Navigator.popUntil(context, (route) => route.isFirst);
+              },
+              child: const Text(
+                'Done',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
           if (isEditing)
             IconButton(
               icon: const Icon(Icons.close),

@@ -44,7 +44,7 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Upcoming Renewals'),
+        title: const Text('Upcoming Reminders'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: isLoading
@@ -63,7 +63,7 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
           Icon(Icons.check_circle_outline, size: 80, color: Colors.green[400]),
           const SizedBox(height: 16),
           Text(
-            'No upcoming renewals',
+            'No upcoming reminders',
             style: TextStyle(fontSize: 18, color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),

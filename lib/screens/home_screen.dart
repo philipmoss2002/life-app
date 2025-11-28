@@ -47,12 +47,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Your Documents'),
+        title: const Text('Your Reminders'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_active),
-            tooltip: 'Upcoming Renewals',
+            tooltip: 'Upcoming Reminders',
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -128,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Upcoming Renewals',
+                    'Upcoming Reminders',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
