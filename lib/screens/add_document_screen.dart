@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/document.dart';
@@ -127,6 +128,55 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     }
   }
 
+  bool _isImageFile(String path) {
+    final extension = path.toLowerCase().split('.').last;
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension);
+  }
+
+  Widget _buildFileThumbnail(String path) {
+    if (_isImageFile(path)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.file(
+          File(path),
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(Icons.image, size: 50);
+          },
+        ),
+      );
+    } else {
+      return Icon(
+        _getFileIcon(path),
+        size: 50,
+        color: Theme.of(context).colorScheme.primary,
+      );
+    }
+  }
+
+  IconData _getFileIcon(String path) {
+    final extension = path.toLowerCase().split('.').last;
+    switch (extension) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'txt':
+        return Icons.text_snippet;
+      case 'zip':
+      case 'rar':
+        return Icons.folder_zip;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -208,8 +258,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.insert_drive_file, size: 20),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    leading: _buildFileThumbnail(path),
                     title: Text(
                       fileName,
                       style: const TextStyle(fontSize: 14),
