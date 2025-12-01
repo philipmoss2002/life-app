@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:pdfx/pdfx.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
@@ -133,6 +134,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension);
   }
 
+  bool _isPdfFile(String path) {
+    final extension = path.toLowerCase().split('.').last;
+    return extension == 'pdf';
+  }
+
   Widget _buildFileThumbnail(String path) {
     if (_isImageFile(path)) {
       return ClipRRect(
@@ -147,6 +153,8 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           },
         ),
       );
+    } else if (_isPdfFile(path)) {
+      return _buildPdfThumbnail(path);
     } else {
       return Icon(
         _getFileIcon(path),
@@ -154,6 +162,82 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         color: Theme.of(context).colorScheme.primary,
       );
     }
+  }
+
+  Widget _buildPdfThumbnail(String path) {
+    return FutureBuilder<PdfDocument>(
+      future: PdfDocument.openFile(path),
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          return FutureBuilder<PdfPage>(
+            future: snapshot.data!.getPage(1),
+            builder: (context, pageSnapshot) {
+              if (pageSnapshot.hasData) {
+                return FutureBuilder<PdfPageImage?>(
+                  future: pageSnapshot.data!.render(
+                    width: 50 * 3, // Higher resolution for better quality
+                    height: 50 * 3,
+                  ),
+                  builder: (context, imageSnapshot) {
+                    if (imageSnapshot.hasData && imageSnapshot.data != null) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.memory(
+                          imageSnapshot.data!.bytes,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                        ),
+                      );
+                    }
+                    return const SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }
+              return const SizedBox(
+                width: 50,
+                height: 50,
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            },
+          );
+        }
+        if (snapshot.hasError) {
+          return Icon(
+            Icons.picture_as_pdf,
+            size: 50,
+            color: Theme.of(context).colorScheme.primary,
+          );
+        }
+        return const SizedBox(
+          width: 50,
+          height: 50,
+          child: Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   IconData _getFileIcon(String path) {

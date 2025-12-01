@@ -12,8 +12,15 @@ When you attach image files (JPG, JPEG, PNG, GIF, BMP, WEBP), the app displays:
 - **Cover fit** to fill the thumbnail area
 - **Error fallback** to a generic image icon if the file can't be loaded
 
+### PDF Thumbnails
+When you attach PDF files, the app displays:
+- **Rendered thumbnail** of the first page of the PDF
+- **50x50 pixel preview** at 3x resolution for crisp quality
+- **Loading indicator** while the PDF is being rendered
+- **Error fallback** to PDF icon if rendering fails
+
 ### File Type Icons
-For non-image files, the app shows color-coded icons based on file type:
+For other file types, the app shows color-coded icons based on file type:
 - **PDF files** → PDF document icon
 - **Word documents** (.doc, .docx) → Description icon
 - **Excel files** (.xls, .xlsx) → Table chart icon
@@ -47,12 +54,17 @@ All icons are displayed at 50x50 pixels and use the app's primary color scheme.
 
 ## Technical Implementation
 
-### Image Detection
-The app checks file extensions to determine if a file is an image:
+### File Type Detection
+The app checks file extensions to determine the file type:
 ```dart
 bool _isImageFile(String path) {
   final extension = path.toLowerCase().split('.').last;
   return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension);
+}
+
+bool _isPdfFile(String path) {
+  final extension = path.toLowerCase().split('.').last;
+  return extension == 'pdf';
 }
 ```
 
@@ -63,6 +75,13 @@ For images:
 - `BoxFit.cover` to fill the thumbnail area
 - Error builder for graceful fallback
 
+For PDFs:
+- Uses `pdf_render` package to render first page
+- `FutureBuilder` for async rendering
+- Renders at 3x resolution (150x150) then scales to 50x50 for crisp quality
+- Shows loading indicator during rendering
+- Falls back to PDF icon on error
+
 For other files:
 - Icon widget with file-type-specific icon
 - Uses theme's primary color
@@ -70,9 +89,11 @@ For other files:
 
 ### Performance Considerations
 - Images are loaded on-demand as the list is displayed
+- PDFs are rendered asynchronously with loading indicators
 - Flutter's image caching handles memory management
 - Error handling prevents crashes from missing/corrupted files
 - Thumbnails are small (50x50) to minimize memory usage
+- PDF rendering uses higher resolution for quality but displays at small size
 
 ## User Experience Benefits
 
@@ -82,12 +103,16 @@ For other files:
 4. **Consistent Layout** - Same thumbnail size and position throughout the app
 5. **Error Resilience** - Graceful fallback if files are missing or corrupted
 
-## Supported Image Formats
+## Supported Thumbnail Formats
+### Images (Actual Preview)
 - JPG/JPEG
 - PNG
 - GIF
 - BMP
 - WEBP
+
+### Documents (Rendered Preview)
+- PDF (first page rendered as thumbnail)
 
 ## Supported File Type Icons
 - PDF documents
