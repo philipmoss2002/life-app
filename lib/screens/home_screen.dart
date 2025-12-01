@@ -4,6 +4,7 @@ import '../services/database_service.dart';
 import 'add_document_screen.dart';
 import 'document_detail_screen.dart';
 import 'upcoming_renewals_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -62,6 +63,31 @@ class _HomeScreenState extends State<HomeScreen> {
               );
               _loadDocuments();
             },
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'privacy') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PrivacyPolicyScreen(),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'privacy',
+                child: Row(
+                  children: [
+                    Icon(Icons.privacy_tip_outlined),
+                    SizedBox(width: 12),
+                    Text('Privacy Policy'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
