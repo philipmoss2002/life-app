@@ -23,6 +23,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   DateTime? renewalDate;
   late List<String> filePaths;
   bool isEditing = false;
+  late Document currentDocument;
 
   final List<String> categories = [
     'Home Insurance',
@@ -35,11 +36,12 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.document.title);
-    _notesController = TextEditingController(text: widget.document.notes ?? '');
-    selectedCategory = widget.document.category;
-    renewalDate = widget.document.renewalDate;
-    filePaths = List.from(widget.document.filePaths);
+    currentDocument = widget.document;
+    _titleController = TextEditingController(text: currentDocument.title);
+    _notesController = TextEditingController(text: currentDocument.notes ?? '');
+    selectedCategory = currentDocument.category;
+    renewalDate = currentDocument.renewalDate;
+    filePaths = List.from(currentDocument.filePaths);
   }
 
   @override
@@ -97,28 +99,28 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
       // Update file attachments
       final db = DatabaseService.instance;
-      final oldFiles = widget.document.filePaths;
+      final oldFiles = currentDocument.filePaths;
 
       // Remove files that are no longer in the list
       for (final oldFile in oldFiles) {
         if (!filePaths.contains(oldFile)) {
-          await db.removeFileFromDocument(widget.document.id!, oldFile);
+          await db.removeFileFromDocument(currentDocument.id!, oldFile);
         }
       }
 
       // Add new files
       for (final newFile in filePaths) {
         if (!oldFiles.contains(newFile)) {
-          await db.addFileToDocument(widget.document.id!, newFile);
+          await db.addFileToDocument(currentDocument.id!, newFile);
         }
       }
 
       // Cancel old notification and schedule new one if renewal date is set
       try {
-        await NotificationService.instance.cancelReminder(widget.document.id!);
+        await NotificationService.instance.cancelReminder(currentDocument.id!);
         if (renewalDate != null) {
           await NotificationService.instance.scheduleRenewalReminder(
-            widget.document.id!,
+            currentDocument.id!,
             _titleController.text,
             renewalDate!,
           );
@@ -128,7 +130,10 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         debugPrint('Failed to update notification: $e');
       }
 
-      setState(() => isEditing = false);
+      setState(() {
+        currentDocument = updatedDocument;
+        isEditing = false;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -171,11 +176,11 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               onPressed: () {
                 setState(() {
                   isEditing = false;
-                  _titleController.text = widget.document.title;
-                  _notesController.text = widget.document.notes ?? '';
-                  selectedCategory = widget.document.category;
-                  renewalDate = widget.document.renewalDate;
-                  filePaths = List.from(widget.document.filePaths);
+                  _titleController.text = currentDocument.title;
+                  _notesController.text = currentDocument.notes ?? '';
+                  selectedCategory = currentDocument.category;
+                  renewalDate = currentDocument.renewalDate;
+                  filePaths = List.from(currentDocument.filePaths);
                 });
               },
             ),
@@ -306,14 +311,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 child: const Text('Save Changes'),
               ),
             ] else ...[
-              _buildInfoCard('Title', widget.document.title),
-              _buildInfoCard('Category', widget.document.category),
-              if (widget.document.renewalDate != null)
+              _buildInfoCard('Title', currentDocument.title),
+              _buildInfoCard('Category', currentDocument.category),
+              if (currentDocument.renewalDate != null)
                 _buildInfoCard(
-                  _getDateLabel(widget.document.category),
-                  '${widget.document.renewalDate!.day}/${widget.document.renewalDate!.month}/${widget.document.renewalDate!.year}',
+                  _getDateLabel(currentDocument.category),
+                  '${currentDocument.renewalDate!.day}/${currentDocument.renewalDate!.month}/${currentDocument.renewalDate!.year}',
                 ),
-              if (widget.document.filePaths.isNotEmpty) ...[
+              if (currentDocument.filePaths.isNotEmpty) ...[
                 Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: Padding(
@@ -322,7 +327,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Files (${widget.document.filePaths.length})',
+                          'Files (${currentDocument.filePaths.length})',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -330,7 +335,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        ...widget.document.filePaths.map((filePath) {
+                        ...currentDocument.filePaths.map((filePath) {
                           final fileName = filePath.split('/').last;
                           return InkWell(
                             onTap: () => _openFile(filePath),
@@ -368,11 +373,11 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   ),
                 ),
               ],
-              if (widget.document.notes != null)
-                _buildInfoCard('Notes', widget.document.notes!),
+              if (currentDocument.notes != null)
+                _buildInfoCard('Notes', currentDocument.notes!),
               _buildInfoCard(
                 'Created',
-                '${widget.document.createdAt.day}/${widget.document.createdAt.month}/${widget.document.createdAt.year}',
+                '${currentDocument.createdAt.day}/${currentDocument.createdAt.month}/${currentDocument.createdAt.year}',
               ),
             ],
           ],
@@ -519,8 +524,8 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
-      await DatabaseService.instance.deleteDocument(widget.document.id!);
-      await NotificationService.instance.cancelReminder(widget.document.id!);
+      await DatabaseService.instance.deleteDocument(currentDocument.id!);
+      await NotificationService.instance.cancelReminder(currentDocument.id!);
       if (mounted) {
         Navigator.pop(context);
       }
