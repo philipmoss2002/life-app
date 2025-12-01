@@ -20,7 +20,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   late TextEditingController _notesController;
   late String selectedCategory;
   DateTime? renewalDate;
-  String? filePath;
+  late List<String> filePaths;
   bool isEditing = false;
 
   final List<String> categories = [
@@ -38,7 +38,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     _notesController = TextEditingController(text: widget.document.notes ?? '');
     selectedCategory = widget.document.category;
     renewalDate = widget.document.renewalDate;
-    filePath = widget.document.filePath;
+    filePaths = List.from(widget.document.filePaths);
   }
 
   @override
@@ -48,11 +48,24 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     super.dispose();
   }
 
-  Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result != null) {
-      setState(() => filePath = result.files.single.path);
+      setState(() {
+        filePaths.addAll(
+          result.files
+              .where((file) => file.path != null)
+              .map((file) => file.path!)
+              .toList(),
+        );
+      });
     }
+  }
+
+  void _removeFile(int index) {
+    setState(() {
+      filePaths.removeAt(index);
+    });
   }
 
   Future<void> _selectDate() async {
@@ -73,13 +86,31 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         id: widget.document.id,
         title: _titleController.text,
         category: selectedCategory,
-        filePath: filePath,
+        filePaths: filePaths,
         renewalDate: renewalDate,
         notes: _notesController.text.isEmpty ? null : _notesController.text,
         createdAt: widget.document.createdAt,
       );
 
       await DatabaseService.instance.updateDocument(updatedDocument);
+
+      // Update file attachments
+      final db = DatabaseService.instance;
+      final oldFiles = widget.document.filePaths;
+
+      // Remove files that are no longer in the list
+      for (final oldFile in oldFiles) {
+        if (!filePaths.contains(oldFile)) {
+          await db.removeFileFromDocument(widget.document.id!, oldFile);
+        }
+      }
+
+      // Add new files
+      for (final newFile in filePaths) {
+        if (!oldFiles.contains(newFile)) {
+          await db.addFileToDocument(widget.document.id!, newFile);
+        }
+      }
 
       // Cancel old notification and schedule new one if renewal date is set
       try {
@@ -143,7 +174,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   _notesController.text = widget.document.notes ?? '';
                   selectedCategory = widget.document.category;
                   renewalDate = widget.document.renewalDate;
-                  filePath = widget.document.filePath;
+                  filePaths = List.from(widget.document.filePaths);
                 });
               },
             ),
@@ -214,31 +245,45 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               ),
               const SizedBox(height: 16),
               ListTile(
-                title: const Text('Attach File'),
+                title: const Text('Attach Files'),
                 subtitle: Text(
-                  filePath != null
-                      ? filePath!.split('/').last
-                      : 'No file selected',
+                  filePaths.isEmpty
+                      ? 'No files selected'
+                      : '${filePaths.length} file(s) attached',
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (filePath != null)
-                      IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => setState(() => filePath = null),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.attach_file),
-                      onPressed: _pickFile,
-                    ),
-                  ],
-                ),
+                trailing: const Icon(Icons.attach_file),
+                onTap: _pickFiles,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                   side: BorderSide(color: Colors.grey[400]!),
                 ),
               ),
+              if (filePaths.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...filePaths.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final path = entry.value;
+                  final fileName = path.split('/').last;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.insert_drive_file, size: 20),
+                      title: Text(
+                        fileName,
+                        style: const TextStyle(fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () => _removeFile(index),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  );
+                }),
+              ],
               const SizedBox(height: 16),
               TextFormField(
                 controller: _notesController,
@@ -264,8 +309,65 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   _getDateLabel(widget.document.category),
                   '${widget.document.renewalDate!.day}/${widget.document.renewalDate!.month}/${widget.document.renewalDate!.year}',
                 ),
-              if (widget.document.filePath != null)
-                _buildFileCard('File', widget.document.filePath!),
+              if (widget.document.filePaths.isNotEmpty) ...[
+                Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Files (${widget.document.filePaths.length})',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...widget.document.filePaths.map((filePath) {
+                          final fileName = filePath.split('/').last;
+                          return InkWell(
+                            onTap: () => _openFile(filePath),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.insert_drive_file,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      fileName,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.open_in_new,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               if (widget.document.notes != null)
                 _buildInfoCard('Notes', widget.document.notes!),
               _buildInfoCard(
@@ -301,58 +403,6 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               style: const TextStyle(fontSize: 16),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFileCard(String label, String filePath) {
-    final fileName = filePath.split('/').last;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => _openFile(filePath),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    Icons.attach_file,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      fileName,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Theme.of(context).colorScheme.primary,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.open_in_new,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );

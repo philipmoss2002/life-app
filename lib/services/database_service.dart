@@ -20,8 +20,9 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -37,17 +38,58 @@ class DatabaseService {
         createdAt TEXT NOT NULL
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE file_attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        documentId INTEGER NOT NULL,
+        filePath TEXT NOT NULL,
+        fileName TEXT NOT NULL,
+        addedAt TEXT NOT NULL,
+        FOREIGN KEY (documentId) REFERENCES documents (id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE file_attachments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          documentId INTEGER NOT NULL,
+          filePath TEXT NOT NULL,
+          fileName TEXT NOT NULL,
+          addedAt TEXT NOT NULL,
+          FOREIGN KEY (documentId) REFERENCES documents (id) ON DELETE CASCADE
+        )
+      ''');
+    }
   }
 
   Future<int> createDocument(Document document) async {
     final db = await database;
-    return await db.insert('documents', document.toMap());
+    final id = await db.insert('documents', document.toMap());
+
+    // Insert file attachments
+    if (document.filePaths.isNotEmpty) {
+      for (final filePath in document.filePaths) {
+        await _addFileAttachment(id, filePath);
+      }
+    }
+
+    return id;
   }
 
   Future<List<Document>> getAllDocuments() async {
     final db = await database;
     final result = await db.query('documents', orderBy: 'createdAt DESC');
-    return result.map((map) => Document.fromMap(map)).toList();
+
+    final documents = <Document>[];
+    for (final map in result) {
+      final filePaths = await _getFileAttachments(map['id'] as int);
+      documents.add(Document.fromMap(map, filePaths: filePaths));
+    }
+    return documents;
   }
 
   Future<List<Document>> getDocumentsByCategory(String category) async {
@@ -58,7 +100,48 @@ class DatabaseService {
       whereArgs: [category],
       orderBy: 'createdAt DESC',
     );
-    return result.map((map) => Document.fromMap(map)).toList();
+
+    final documents = <Document>[];
+    for (final map in result) {
+      final filePaths = await _getFileAttachments(map['id'] as int);
+      documents.add(Document.fromMap(map, filePaths: filePaths));
+    }
+    return documents;
+  }
+
+  Future<void> _addFileAttachment(int documentId, String filePath) async {
+    final db = await database;
+    final fileName = filePath.split('/').last;
+    await db.insert('file_attachments', {
+      'documentId': documentId,
+      'filePath': filePath,
+      'fileName': fileName,
+      'addedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<List<String>> _getFileAttachments(int documentId) async {
+    final db = await database;
+    final result = await db.query(
+      'file_attachments',
+      where: 'documentId = ?',
+      whereArgs: [documentId],
+      orderBy: 'addedAt ASC',
+    );
+    return result.map((map) => map['filePath'] as String).toList();
+  }
+
+  Future<void> addFileToDocument(int documentId, String filePath) async {
+    await _addFileAttachment(documentId, filePath);
+  }
+
+  Future<void> removeFileFromDocument(int documentId, String filePath) async {
+    final db = await database;
+    await db.delete(
+      'file_attachments',
+      where: 'documentId = ? AND filePath = ?',
+      whereArgs: [documentId, filePath],
+    );
   }
 
   Future<int> updateDocument(Document document) async {

@@ -19,7 +19,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   String selectedCategory = 'Home Insurance';
   DateTime? renewalDate;
-  String? filePath;
+  List<String> filePaths = [];
 
   final List<String> categories = [
     'Home Insurance',
@@ -36,11 +36,24 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     super.dispose();
   }
 
-  Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result != null) {
-      setState(() => filePath = result.files.single.path);
+      setState(() {
+        filePaths.addAll(
+          result.files
+              .where((file) => file.path != null)
+              .map((file) => file.path!)
+              .toList(),
+        );
+      });
     }
+  }
+
+  void _removeFile(int index) {
+    setState(() {
+      filePaths.removeAt(index);
+    });
   }
 
   Future<void> _selectDate() async {
@@ -60,7 +73,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       final document = Document(
         title: _titleController.text,
         category: selectedCategory,
-        filePath: filePath,
+        filePaths: filePaths,
         renewalDate: renewalDate,
         notes: _notesController.text.isEmpty ? null : _notesController.text,
       );
@@ -87,7 +100,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           id: id,
           title: _titleController.text,
           category: selectedCategory,
-          filePath: filePath,
+          filePaths: filePaths,
           renewalDate: renewalDate,
           notes: _notesController.text.isEmpty ? null : _notesController.text,
         );
@@ -173,19 +186,45 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             ),
             const SizedBox(height: 16),
             ListTile(
-              title: const Text('Attach File'),
+              title: const Text('Attach Files'),
               subtitle: Text(
-                filePath != null
-                    ? filePath!.split('/').last
-                    : 'No file selected',
+                filePaths.isEmpty
+                    ? 'No files selected'
+                    : '${filePaths.length} file(s) attached',
               ),
               trailing: const Icon(Icons.attach_file),
-              onTap: _pickFile,
+              onTap: _pickFiles,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4),
                 side: BorderSide(color: Colors.grey[400]!),
               ),
             ),
+            if (filePaths.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...filePaths.asMap().entries.map((entry) {
+                final index = entry.key;
+                final path = entry.value;
+                final fileName = path.split('/').last;
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.insert_drive_file, size: 20),
+                    title: Text(
+                      fileName,
+                      style: const TextStyle(fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => _removeFile(index),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                );
+              }),
+            ],
             const SizedBox(height: 16),
             TextFormField(
               controller: _notesController,
