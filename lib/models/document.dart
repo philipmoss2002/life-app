@@ -1,9 +1,12 @@
+import 'file_attachment.dart';
+
 class Document {
   final int? id;
   final String title;
   final String category;
   final String? filePath; // Kept for backward compatibility
   final List<String> filePaths; // New: multiple file paths
+  final List<FileAttachment> fileAttachments; // With labels
   final DateTime? renewalDate;
   final String? notes;
   final DateTime createdAt;
@@ -14,10 +17,12 @@ class Document {
     required this.category,
     this.filePath,
     List<String>? filePaths,
+    List<FileAttachment>? fileAttachments,
     this.renewalDate,
     this.notes,
     DateTime? createdAt,
   })  : filePaths = filePaths ?? (filePath != null ? [filePath] : []),
+        fileAttachments = fileAttachments ?? [],
         createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -35,13 +40,14 @@ class Document {
   }
 
   factory Document.fromMap(Map<String, dynamic> map,
-      {List<String>? filePaths}) {
+      {List<String>? filePaths, List<FileAttachment>? fileAttachments}) {
     return Document(
       id: map['id'],
       title: map['title'],
       category: map['category'],
       filePath: map['filePath'],
       filePaths: filePaths,
+      fileAttachments: fileAttachments,
       renewalDate: map['renewalDate'] != null
           ? DateTime.parse(map['renewalDate'])
           : null,
@@ -56,6 +62,7 @@ class Document {
     String? category,
     String? filePath,
     List<String>? filePaths,
+    List<FileAttachment>? fileAttachments,
     DateTime? renewalDate,
     String? notes,
     DateTime? createdAt,
@@ -66,6 +73,7 @@ class Document {
       category: category ?? this.category,
       filePath: filePath ?? this.filePath,
       filePaths: filePaths ?? this.filePaths,
+      fileAttachments: fileAttachments ?? this.fileAttachments,
       renewalDate: renewalDate ?? this.renewalDate,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,

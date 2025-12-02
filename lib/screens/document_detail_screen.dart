@@ -23,6 +23,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   late String selectedCategory;
   DateTime? renewalDate;
   late List<String> filePaths;
+  late Map<String, String?> fileLabels; // Map of filePath -> label
   bool isEditing = false;
   late Document currentDocument;
 
@@ -43,6 +44,21 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     selectedCategory = currentDocument.category;
     renewalDate = currentDocument.renewalDate;
     filePaths = List.from(currentDocument.filePaths);
+    fileLabels = {};
+    _loadFileLabels();
+  }
+
+  Future<void> _loadFileLabels() async {
+    if (currentDocument.id != null) {
+      final attachments = await DatabaseService.instance
+          .getFileAttachmentsWithLabels(currentDocument.id!);
+      setState(() {
+        fileLabels = {
+          for (var attachment in attachments)
+            attachment.filePath: attachment.label
+        };
+      });
+    }
   }
 
   @override
@@ -68,8 +84,81 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   void _removeFile(int index) {
     setState(() {
+      final path = filePaths[index];
       filePaths.removeAt(index);
+      fileLabels.remove(path);
     });
+  }
+
+  Future<void> _editFileLabel(String filePath, String fileName) async {
+    final currentLabel = fileLabels[filePath];
+    final controller = TextEditingController(text: currentLabel ?? '');
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit File Label'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'File: $fileName',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Label (optional)',
+                hintText: 'Enter a meaningful name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          if (currentLabel != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Remove Label'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    // Dispose controller after dialog is fully closed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+
+    if (result != null) {
+      setState(() {
+        if (result.isEmpty) {
+          fileLabels.remove(filePath);
+        } else {
+          fileLabels[filePath] = result;
+        }
+      });
+
+      // Update in database if document is saved
+      if (currentDocument.id != null) {
+        await DatabaseService.instance.updateFileLabel(
+          currentDocument.id!,
+          filePath,
+          result.isEmpty ? null : result,
+        );
+      }
+    }
   }
 
   Future<void> _selectDate() async {
@@ -112,7 +201,8 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       // Add new files
       for (final newFile in filePaths) {
         if (!oldFiles.contains(newFile)) {
-          await db.addFileToDocument(currentDocument.id!, newFile);
+          await db.addFileToDocument(
+              currentDocument.id!, newFile, fileLabels[newFile]);
         }
       }
 
@@ -271,6 +361,8 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   final index = entry.key;
                   final path = entry.value;
                   final fileName = path.split('/').last;
+                  final label = fileLabels[path];
+                  final displayName = label ?? fileName;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
@@ -279,11 +371,47 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                         vertical: 8,
                       ),
                       leading: _buildFileThumbnail(path),
-                      title: Text(
-                        fileName,
-                        style: const TextStyle(fontSize: 14),
-                        overflow: TextOverflow.ellipsis,
+                      title: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (label != null)
+                            Text(
+                              fileName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
                       ),
+                      subtitle: label == null
+                          ? TextButton.icon(
+                              icon: const Icon(Icons.label_outline, size: 16),
+                              label: const Text('Add label'),
+                              onPressed: () => _editFileLabel(path, fileName),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                alignment: Alignment.centerLeft,
+                              ),
+                            )
+                          : TextButton.icon(
+                              icon: const Icon(Icons.edit, size: 16),
+                              label: const Text('Edit label'),
+                              onPressed: () => _editFileLabel(path, fileName),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                alignment: Alignment.centerLeft,
+                              ),
+                            ),
                       trailing: IconButton(
                         icon: const Icon(Icons.close, size: 20),
                         onPressed: () => _removeFile(index),
@@ -338,6 +466,8 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                         const SizedBox(height: 8),
                         ...currentDocument.filePaths.map((filePath) {
                           final fileName = filePath.split('/').last;
+                          final label = fileLabels[filePath];
+                          final displayName = label ?? fileName;
                           return InkWell(
                             onTap: () => _openFile(filePath),
                             child: Padding(
@@ -347,15 +477,30 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                                   _buildFileThumbnail(filePath),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      fileName,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        decoration: TextDecoration.underline,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayName,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
+                                        if (label != null)
+                                          Text(
+                                            fileName,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                   Icon(

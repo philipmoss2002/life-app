@@ -7,7 +7,7 @@ Requires: pip install Pillow
 from PIL import Image
 import os
 
-def add_padding_to_icon(input_path, output_path, padding_percent=15):
+def add_padding_to_icon(input_path, output_path, padding_percent=13):
     """
     Add transparent padding around an icon.
     
@@ -26,7 +26,7 @@ def add_padding_to_icon(input_path, output_path, padding_percent=15):
     # Calculate new size with padding
     original_size = img.size[0]  # Assuming square image
     padding = int(original_size * (padding_percent / 100))
-    new_size = original_size + (2 * padding)
+    new_size = original_size + (3 * padding)
     
     # Create new image with transparent background
     new_img = Image.new('RGBA', (new_size, new_size), (0, 0, 0, 0))
@@ -51,6 +51,6 @@ if __name__ == "__main__":
         exit(1)
     
     print("Adding padding to app icon...")
-    add_padding_to_icon(input_file, output_file, padding_percent=15)
+    add_padding_to_icon(input_file, output_file, padding_percent=13)
     print("\nDone! Now update pubspec.yaml to use 'life_app_logo_padded.png'")
     print("Then run: flutter pub run flutter_launcher_icons")

@@ -22,6 +22,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   String selectedCategory = 'Home Insurance';
   DateTime? renewalDate;
   List<String> filePaths = [];
+  Map<String, String?> fileLabels = {}; // Map of filePath -> label
 
   final List<String> categories = [
     'Home Insurance',
@@ -54,8 +55,72 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   void _removeFile(int index) {
     setState(() {
+      final path = filePaths[index];
       filePaths.removeAt(index);
+      fileLabels.remove(path);
     });
+  }
+
+  Future<void> _editFileLabel(String filePath, String fileName) async {
+    final currentLabel = fileLabels[filePath];
+    final controller = TextEditingController(text: currentLabel ?? '');
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit File Label'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'File: $fileName',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Label (optional)',
+                hintText: 'Enter a meaningful name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          if (currentLabel != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Remove Label'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    // Dispose controller after dialog is fully closed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+
+    if (result != null) {
+      setState(() {
+        if (result.isEmpty) {
+          fileLabels.remove(filePath);
+        } else {
+          fileLabels[filePath] = result;
+        }
+      });
+    }
   }
 
   Future<void> _selectDate() async {
@@ -81,6 +146,14 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       );
 
       final id = await DatabaseService.instance.createDocument(document);
+
+      // Update file labels if any
+      for (final filePath in filePaths) {
+        final label = fileLabels[filePath];
+        if (label != null && label.isNotEmpty) {
+          await DatabaseService.instance.updateFileLabel(id, filePath, label);
+        }
+      }
 
       // Schedule notification if renewal date is set
       if (renewalDate != null) {
@@ -339,6 +412,8 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                 final index = entry.key;
                 final path = entry.value;
                 final fileName = path.split('/').last;
+                final label = fileLabels[path];
+                final displayName = label ?? fileName;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
@@ -347,11 +422,47 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                       vertical: 8,
                     ),
                     leading: _buildFileThumbnail(path),
-                    title: Text(
-                      fileName,
-                      style: const TextStyle(fontSize: 14),
-                      overflow: TextOverflow.ellipsis,
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (label != null)
+                          Text(
+                            fileName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                     ),
+                    subtitle: label == null
+                        ? TextButton.icon(
+                            icon: const Icon(Icons.label_outline, size: 16),
+                            label: const Text('Add label'),
+                            onPressed: () => _editFileLabel(path, fileName),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              alignment: Alignment.centerLeft,
+                            ),
+                          )
+                        : TextButton.icon(
+                            icon: const Icon(Icons.edit, size: 16),
+                            label: const Text('Edit label'),
+                            onPressed: () => _editFileLabel(path, fileName),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              alignment: Alignment.centerLeft,
+                            ),
+                          ),
                     trailing: IconButton(
                       icon: const Icon(Icons.close, size: 20),
                       onPressed: () => _removeFile(index),
