@@ -3,6 +3,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'screens/home_screen.dart';
 import 'services/database_service.dart';
 import 'services/notification_service.dart';
+// import 'services/amplify_service.dart'; // Uncomment when ready to use cloud sync
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,6 +16,16 @@ void main() async {
 
   // Initialize notifications
   await NotificationService.instance.initialize();
+
+  // TODO: Initialize Amplify for cloud sync (Task 2+)
+  // Uncomment the following lines when AWS resources are configured:
+  // try {
+  //   await AmplifyService().initialize();
+  //   debugPrint('Amplify initialized successfully');
+  // } catch (e) {
+  //   debugPrint('Failed to initialize Amplify: $e');
+  //   // App can still work in local-only mode
+  // }
 
   runApp(const HouseholdDocsApp());
 }

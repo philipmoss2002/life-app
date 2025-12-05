@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:household_docs_app/main.dart';
+import '../test_helpers.dart';
 
 void main() {
+  setUpAll(() {
+    setupWidgetTest();
+  });
+
   group('Document Workflow Integration Tests', () {
     testWidgets('Complete document creation workflow',
         (WidgetTester tester) async {
