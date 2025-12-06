@@ -5,7 +5,10 @@ import 'package:pdfx/pdfx.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
+import '../services/storage_manager.dart';
+import '../services/authentication_service.dart';
 import 'document_detail_screen.dart';
+import 'subscription_plans_screen.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   const AddDocumentScreen({super.key});
@@ -18,6 +21,8 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _notesController = TextEditingController();
+  final StorageManager _storageManager = StorageManager();
+  final AuthenticationService _authService = AuthenticationService();
 
   String selectedCategory = 'Home Insurance';
   DateTime? renewalDate;
@@ -40,15 +45,54 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   }
 
   Future<void> _pickFiles() async {
+    // Check if user is authenticated for cloud storage
+    final user = await _authService.getCurrentUser();
+    if (user != null) {
+      // Check storage quota before allowing file selection
+      final storageInfo = await _storageManager.getStorageInfo();
+
+      if (storageInfo.isOverLimit) {
+        if (mounted) {
+          _showStorageLimitDialog(storageInfo);
+        }
+        return;
+      }
+
+      if (storageInfo.isNearLimit) {
+        if (mounted) {
+          final proceed = await _showStorageWarningDialog(storageInfo);
+          if (proceed != true) {
+            return;
+          }
+        }
+      }
+    }
+
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result != null) {
+      // Calculate total size of selected files
+      int totalSize = 0;
+      final validFiles = <String>[];
+
+      for (final file in result.files) {
+        if (file.path != null) {
+          final fileSize = File(file.path!).lengthSync();
+          totalSize += fileSize;
+          validFiles.add(file.path!);
+        }
+      }
+
+      // Check if adding these files would exceed storage
+      if (user != null) {
+        final hasSpace = await _storageManager.hasAvailableSpace(totalSize);
+        if (!hasSpace && mounted) {
+          _showStorageLimitDialog(await _storageManager.getStorageInfo());
+          return;
+        }
+      }
+
       setState(() {
-        filePaths.addAll(
-          result.files
-              .where((file) => file.path != null)
-              .map((file) => file.path!)
-              .toList(),
-        );
+        filePaths.addAll(validFiles);
       });
     }
   }
@@ -137,6 +181,19 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   Future<void> _saveDocument() async {
     if (_formKey.currentState!.validate()) {
+      // Check storage before saving if user is authenticated
+      final user = await _authService.getCurrentUser();
+      if (user != null && filePaths.isNotEmpty) {
+        final storageInfo = await _storageManager.getStorageInfo();
+
+        if (storageInfo.isOverLimit) {
+          if (mounted) {
+            _showStorageLimitDialog(storageInfo);
+          }
+          return;
+        }
+      }
+
       final document = Document(
         title: _titleController.text,
         category: selectedCategory,
@@ -332,6 +389,112 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       default:
         return Icons.insert_drive_file;
     }
+  }
+
+  void _showStorageLimitDialog(StorageInfo storageInfo) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Storage Limit Exceeded'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You have used ${storageInfo.usagePercentage.toStringAsFixed(1)}% of your storage quota.',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Used: ${storageInfo.usedBytesFormatted} / ${storageInfo.quotaBytesFormatted}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'You cannot upload new files until you free up space or upgrade your storage plan.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SubscriptionPlansScreen(),
+                ),
+              );
+            },
+            child: const Text('Upgrade'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showStorageWarningDialog(StorageInfo storageInfo) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Approaching Storage Limit'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You have used ${storageInfo.usagePercentage.toStringAsFixed(1)}% of your storage quota.',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Used: ${storageInfo.usedBytesFormatted} / ${storageInfo.quotaBytesFormatted}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Consider upgrading your storage plan or removing unused files.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context, false);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SubscriptionPlansScreen(),
+                ),
+              );
+            },
+            child: const Text('Upgrade'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

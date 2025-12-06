@@ -4,6 +4,7 @@ import '../models/document.dart';
 import '../models/file_attachment.dart';
 import '../models/sync_state.dart';
 import 'database_service.dart';
+import 'notification_service.dart';
 
 /// Resolution strategy for conflicts
 enum ConflictResolution {
@@ -20,12 +21,17 @@ enum ConflictResolution {
 /// Service for detecting and resolving synchronization conflicts
 class ConflictResolutionService {
   final DatabaseService _databaseService;
+  final NotificationService _notificationService;
   final Map<String, Conflict> _activeConflicts = {};
   final StreamController<Conflict> _conflictController =
       StreamController<Conflict>.broadcast();
 
-  ConflictResolutionService({DatabaseService? databaseService})
-      : _databaseService = databaseService ?? DatabaseService.instance;
+  ConflictResolutionService({
+    DatabaseService? databaseService,
+    NotificationService? notificationService,
+  })  : _databaseService = databaseService ?? DatabaseService.instance,
+        _notificationService =
+            notificationService ?? NotificationService.instance;
 
   /// Stream of detected conflicts
   Stream<Conflict> get conflictStream => _conflictController.stream;
@@ -76,6 +82,13 @@ class ConflictResolutionService {
       );
       _activeConflicts[conflict.id] = conflict;
       _conflictController.add(conflict);
+
+      // Show notification for the conflict
+      _notificationService.showConflictNotification(
+        conflict.documentId,
+        local.title,
+      );
+
       return conflict;
     }
 
@@ -122,6 +135,12 @@ class ConflictResolutionService {
 
     // Update the document in the database
     await _databaseService.updateDocument(resolvedDocument);
+
+    // Cancel the conflict notification and show resolution notification
+    await _notificationService.cancelConflictNotification(conflict.documentId);
+    await _notificationService.showConflictResolvedNotification(
+      conflict.localVersion.title,
+    );
 
     return resolvedDocument;
   }

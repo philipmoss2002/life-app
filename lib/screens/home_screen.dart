@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/document.dart';
+import '../models/sync_state.dart';
+import '../models/conflict.dart';
 import '../services/database_service.dart';
+import '../services/subscription_service.dart';
+import '../services/conflict_resolution_service.dart';
+import '../services/storage_manager.dart';
+import '../providers/auth_provider.dart';
+import '../widgets/subscription_prompt.dart';
 import 'add_document_screen.dart';
 import 'document_detail_screen.dart';
 import 'upcoming_renewals_screen.dart';
-import 'privacy_policy_screen.dart';
+import 'settings_screen.dart';
+import 'sync_status_detail_screen.dart';
+import 'conflict_resolution_screen.dart';
+import 'storage_usage_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
   final List<String> categories = [
     'All',
     'Home Insurance',
@@ -22,14 +33,45 @@ class _HomeScreenState extends State<HomeScreen> {
     'Holiday',
     'Other',
   ];
+  final StorageManager _storageManager = StorageManager();
   String selectedCategory = 'All';
   List<Document> documents = [];
   bool isLoading = true;
+  StorageInfo? _storageInfo;
 
   @override
   void initState() {
     super.initState();
     _loadDocuments();
+    _loadStorageInfo();
+    _listenToStorageUpdates();
+  }
+
+  Future<void> _loadStorageInfo() async {
+    try {
+      final info = await _storageManager.getStorageInfo();
+      if (mounted) {
+        setState(() {
+          _storageInfo = info;
+        });
+      }
+    } catch (e) {
+      // Silently fail - storage info is not critical
+    }
+  }
+
+  void _listenToStorageUpdates() {
+    _storageManager.storageUpdates.listen((info) {
+      if (mounted) {
+        setState(() {
+          _storageInfo = info;
+        });
+      }
+    });
+  }
+
+  int get _conflictCount {
+    return documents.where((doc) => doc.syncState == SyncState.conflict).length;
   }
 
   Future<void> _loadDocuments() async {
@@ -42,6 +84,19 @@ class _HomeScreenState extends State<HomeScreen> {
       documents = docs;
       isLoading = false;
     });
+  }
+
+  Future<void> _handleSubscriptionBannerTap() async {
+    if (subscriptionStatus == SubscriptionStatus.none) {
+      await SubscriptionPrompt.navigateToPlans(context);
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const SettingsScreen(),
+        ),
+      );
+    }
   }
 
   @override
@@ -64,35 +119,60 @@ class _HomeScreenState extends State<HomeScreen> {
               _loadDocuments();
             },
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'privacy') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PrivacyPolicyScreen(),
-                  ),
-                );
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'privacy',
-                child: Row(
-                  children: [
-                    Icon(Icons.privacy_tip_outlined),
-                    SizedBox(width: 12),
-                    Text('Privacy Policy'),
-                  ],
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              return IconButton(
+                icon: Icon(
+                  authProvider.isAuthenticated
+                      ? Icons.cloud_done
+                      : Icons.cloud_off,
                 ),
-              ),
-            ],
+                tooltip: authProvider.isAuthenticated
+                    ? 'Cloud Sync Active'
+                    : 'Cloud Sync Disabled',
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
+                  );
+                  _loadDocuments();
+                },
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
+              );
+              _loadDocuments();
+            },
           ),
         ],
       ),
       body: Column(
         children: [
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              if (authProvider.isAuthenticated) {
+                return SubscriptionPrompt.buildSubscriptionBanner(
+                  context,
+                  subscriptionStatus,
+                  () => _handleSubscriptionBannerTap(),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          _buildStorageWarningBanner(),
+          _buildConflictBanner(),
           _buildUpcomingRenewalsBanner(),
           _buildCategoryFilter(),
           Expanded(
@@ -113,6 +193,128 @@ class _HomeScreenState extends State<HomeScreen> {
           _loadDocuments();
         },
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildStorageWarningBanner() {
+    if (_storageInfo == null) return const SizedBox.shrink();
+    if (!_storageInfo!.isNearLimit && !_storageInfo!.isOverLimit) {
+      return const SizedBox.shrink();
+    }
+
+    final isOverLimit = _storageInfo!.isOverLimit;
+    final color = isOverLimit ? Colors.red : Colors.orange;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const StorageUsageScreen(),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color[100],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color[300]!, width: 2),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isOverLimit ? Icons.error : Icons.warning_amber_rounded,
+              color: color[800],
+              size: 32,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isOverLimit
+                        ? 'Storage Limit Exceeded'
+                        : 'Storage Almost Full',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: color[900],
+                    ),
+                  ),
+                  Text(
+                    '${_storageInfo!.usagePercentage.toStringAsFixed(1)}% used (${_storageInfo!.usedBytesFormatted} / ${_storageInfo!.quotaBytesFormatted})',
+                    style: TextStyle(color: color[800]),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isOverLimit
+                        ? 'Cannot upload new files'
+                        : 'Tap to manage storage',
+                    style: TextStyle(
+                      color: color[700],
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: color[800]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConflictBanner() {
+    if (_conflictCount == 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red[300]!, width: 2),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.red[800], size: 32),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sync Conflicts Detected',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.red[900],
+                  ),
+                ),
+                Text(
+                  '$_conflictCount ${_conflictCount == 1 ? 'document has' : 'documents have'} conflicting changes',
+                  style: TextStyle(color: Colors.red[800]),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Tap on documents below to resolve',
+                  style: TextStyle(
+                    color: Colors.red[700],
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: Colors.red[800]),
+        ],
       ),
     );
   }
@@ -227,50 +429,224 @@ class _HomeScreenState extends State<HomeScreen> {
       itemCount: documents.length,
       itemBuilder: (context, index) {
         final doc = documents[index];
+        final hasConflict = doc.syncState == SyncState.conflict;
+
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: ListTile(
-            leading: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
+          child: Stack(
+            children: [
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _getCategoryIcon(doc.category),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                title: Text(doc.title),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(doc.category),
+                    if (doc.renewalDate != null)
+                      Text(
+                        '${_getDateLabel(doc.category)}: ${_formatDate(doc.renewalDate!)}',
+                        style: TextStyle(
+                          color: _isRenewalSoon(doc.renewalDate!)
+                              ? Colors.red
+                              : null,
+                        ),
+                      ),
+                    if (hasConflict)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Sync conflict - tap to resolve',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSyncStatusIndicator(doc),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+                onTap: () async {
+                  // If document has a conflict, go directly to conflict resolution
+                  if (hasConflict) {
+                    await _handleConflictResolution(doc);
+                  } else {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            DocumentDetailScreen(document: doc),
+                      ),
+                    );
+                  }
+                  _loadDocuments();
+                },
               ),
-              child: Icon(
-                _getCategoryIcon(doc.category),
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            title: Text(doc.title),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(doc.category),
-                if (doc.renewalDate != null)
-                  Text(
-                    '${_getDateLabel(doc.category)}: ${_formatDate(doc.renewalDate!)}',
-                    style: TextStyle(
-                      color:
-                          _isRenewalSoon(doc.renewalDate!) ? Colors.red : null,
+              // Conflict badge overlay
+              if (hasConflict)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.warning,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'CONFLICT',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-              ],
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DocumentDetailScreen(document: doc),
                 ),
-              );
-              _loadDocuments();
-            },
+            ],
           ),
         );
       },
     );
+  }
+
+  Widget _buildSyncStatusIndicator(Document doc) {
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, child) {
+        // Only show sync indicators if user is authenticated
+        if (!authProvider.isAuthenticated) {
+          return const SizedBox.shrink();
+        }
+
+        return GestureDetector(
+          onTap: () => _showSyncStatusDetail(doc),
+          child: _getSyncStatusIcon(doc.syncState),
+        );
+      },
+    );
+  }
+
+  Widget _getSyncStatusIcon(SyncState syncState) {
+    switch (syncState) {
+      case SyncState.synced:
+        return const Icon(
+          Icons.cloud_done,
+          color: Colors.green,
+          size: 20,
+        );
+      case SyncState.pending:
+        return const Icon(
+          Icons.cloud_upload,
+          color: Colors.orange,
+          size: 20,
+        );
+      case SyncState.syncing:
+        return const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+          ),
+        );
+      case SyncState.conflict:
+        return const Icon(
+          Icons.warning,
+          color: Colors.red,
+          size: 20,
+        );
+      case SyncState.error:
+        return const Icon(
+          Icons.error,
+          color: Colors.red,
+          size: 20,
+        );
+      case SyncState.notSynced:
+        return const Icon(
+          Icons.cloud_off,
+          color: Colors.grey,
+          size: 20,
+        );
+    }
+  }
+
+  Future<void> _showSyncStatusDetail(Document doc) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SyncStatusDetailScreen(document: doc),
+      ),
+    );
+    _loadDocuments();
+  }
+
+  Future<void> _handleConflictResolution(Document doc) async {
+    // Get the conflict for this document
+    final conflictService = ConflictResolutionService();
+    final conflicts = await conflictService.getActiveConflicts();
+
+    final conflict = conflicts.firstWhere(
+      (c) => c.documentId == doc.id.toString(),
+      orElse: () {
+        // If no conflict found in service, create a mock one for UI purposes
+        // In real scenario, this should be fetched from the sync service
+        return Conflict(
+          id: 'temp_${doc.id}',
+          documentId: doc.id.toString(),
+          localVersion: doc,
+          remoteVersion: doc, // This should come from remote
+          type: ConflictType.documentModified,
+        );
+      },
+    );
+
+    final result = await Navigator.push<Document>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ConflictResolutionScreen(conflict: conflict),
+      ),
+    );
+
+    if (result != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conflict resolved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   IconData _getCategoryIcon(String category) {
