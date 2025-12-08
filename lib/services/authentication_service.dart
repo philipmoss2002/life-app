@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
+import 'analytics_service.dart';
 
 /// Enum representing the authentication state
 enum AuthState {
@@ -32,6 +33,7 @@ class AuthenticationService {
 
   final StreamController<AuthState> _authStateController =
       StreamController<AuthState>.broadcast();
+  final AnalyticsService _analyticsService = AnalyticsService();
 
   /// Stream of authentication state changes
   Stream<AuthState> get authStateChanges => _authStateController.stream;
@@ -56,6 +58,12 @@ class AuthenticationService {
         safePrint('Sign up requires email verification');
       }
 
+      // Track successful sign up
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.signUp,
+        success: true,
+      );
+
       // Get user details after sign up
       final userId = result.userId ?? email;
       return AppUser(
@@ -64,6 +72,14 @@ class AuthenticationService {
       );
     } on AuthException catch (e) {
       safePrint('Error signing up: ${e.message}');
+
+      // Track failed sign up
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.signUp,
+        success: false,
+        errorMessage: e.message,
+      );
+
       rethrow;
     }
   }
@@ -81,6 +97,12 @@ class AuthenticationService {
       if (result.isSignedIn) {
         _authStateController.add(AuthState.authenticated);
 
+        // Track successful sign in
+        await _analyticsService.trackAuthEvent(
+          type: AuthEventType.signIn,
+          success: true,
+        );
+
         // Get user attributes
         final user = await _getCurrentUser();
         return user;
@@ -90,6 +112,14 @@ class AuthenticationService {
     } on AuthException catch (e) {
       safePrint('Error signing in: ${e.message}');
       _authStateController.add(AuthState.unauthenticated);
+
+      // Track failed sign in
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.signIn,
+        success: false,
+        errorMessage: e.message,
+      );
+
       rethrow;
     }
   }
@@ -100,9 +130,24 @@ class AuthenticationService {
     try {
       await Amplify.Auth.signOut();
       _authStateController.add(AuthState.unauthenticated);
+
+      // Track sign out
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.signOut,
+        success: true,
+      );
+
       safePrint('User signed out successfully');
     } on AuthException catch (e) {
       safePrint('Error signing out: ${e.message}');
+
+      // Track failed sign out
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.signOut,
+        success: false,
+        errorMessage: e.message,
+      );
+
       rethrow;
     }
   }
@@ -120,8 +165,22 @@ class AuthenticationService {
       } else {
         safePrint('Password reset requires confirmation');
       }
+
+      // Track password reset
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.passwordReset,
+        success: true,
+      );
     } on AuthException catch (e) {
       safePrint('Error resetting password: ${e.message}');
+
+      // Track failed password reset
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.passwordReset,
+        success: false,
+        errorMessage: e.message,
+      );
+
       rethrow;
     }
   }

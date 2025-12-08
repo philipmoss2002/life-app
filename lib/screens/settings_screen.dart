@@ -8,6 +8,7 @@ import 'subscription_plans_screen.dart';
 import 'subscription_status_screen.dart';
 import 'storage_usage_screen.dart';
 import 'devices_list_screen.dart';
+import 'sync_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -268,6 +269,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Theme.of(context).colorScheme.primary,
                 ),
           ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.sync_outlined),
+          title: const Text('Sync Settings'),
+          subtitle: const Text('Control when and how sync occurs'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SyncSettingsScreen(),
+              ),
+            );
+          },
         ),
         ListTile(
           leading: const Icon(Icons.notifications_outlined),

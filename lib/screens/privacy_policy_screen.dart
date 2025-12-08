@@ -22,7 +22,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Last Updated: December 1, 2025',
+            'Last Updated: December 8, 2025',
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey[600],
@@ -32,29 +32,37 @@ class PrivacyPolicyScreen extends StatelessWidget {
           _buildSection(
             icon: Icons.shield_outlined,
             title: 'What We Collect',
-            content: 'Nothing. We don\'t collect any personal information.',
+            content:
+                'Free users: Nothing. Premium users: Email for authentication, document metadata, and files (encrypted in AWS).',
             color: Colors.green,
           ),
           _buildSection(
             icon: Icons.phone_android,
             title: 'Where Your Data Lives',
             content:
-                'On your device only. All documents, files, and information are stored locally on your device using SQLite database.',
+                'Free users: On your device only. Premium users: Encrypted in AWS (DynamoDB for metadata, S3 for files) with local caching.',
             color: Colors.blue,
           ),
           _buildSection(
             icon: Icons.cloud_off,
             title: 'What We Share',
             content:
-                'Nothing. Your data never leaves your device. No cloud storage, no servers, no third parties.',
+                'We do NOT share your document content with third parties. Premium users: AWS provides infrastructure only.',
             color: Colors.orange,
           ),
           _buildSection(
             icon: Icons.security,
             title: 'Your Control',
             content:
-                'You can view, edit, or delete any document anytime. Uninstall the app to remove all data. Your original files are never modified or deleted.',
+                'You can view, edit, or delete any document anytime. Premium users: Request account deletion to remove all cloud data within 30 days.',
             color: Colors.purple,
+          ),
+          _buildSection(
+            icon: Icons.lock,
+            title: 'Encryption & Security',
+            content:
+                'Premium users: TLS 1.3 encryption in transit, AES-256 encryption at rest. AWS provides industry-standard security with continuous monitoring.',
+            color: Colors.indigo,
           ),
           _buildSection(
             icon: Icons.verified_user,
@@ -65,9 +73,9 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ),
           _buildSection(
             icon: Icons.block,
-            title: 'No Tracking',
+            title: 'No Content Analysis',
             content:
-                '• No analytics\n• No advertisements\n• No user accounts\n• No internet connection required',
+                '• We do NOT access or analyze your document content\n• No advertisements\n• No tracking for marketing\n• Free users: No internet required',
             color: Colors.red,
           ),
           const SizedBox(height: 24),
@@ -90,7 +98,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Your household documents are private. They stay on your device, under your control, always.',
+                  'Free users: Your documents stay on your device, under your control. Premium users: Your documents are encrypted and securely stored in AWS. We never access or analyze your content.',
                   style: TextStyle(fontSize: 16),
                 ),
               ],
@@ -106,8 +114,12 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _buildInfoCard(
-            'Local Storage Only',
+            'Free Users - Local Storage',
             'All data is stored exclusively on your device using SQLite database. No data is transmitted over the internet.',
+          ),
+          _buildInfoCard(
+            'Premium Users - AWS Cloud Storage',
+            'Document metadata stored in AWS DynamoDB, files in AWS S3. All data encrypted with AES-256 at rest and TLS 1.3 in transit. Stored in your selected AWS region.',
           ),
           _buildInfoCard(
             'File Access',
@@ -115,13 +127,34 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ),
           _buildInfoCard(
             'Data Security',
-            'Your data is protected by your device\'s security measures (PIN, password, biometric authentication). We recommend keeping your device locked and secure.',
+            'Local data protected by device security. Premium users: AWS provides industry-standard security with continuous monitoring, IAM access controls, and encryption.',
+          ),
+          _buildInfoCard(
+            'Data Retention',
+            'Free users: Data retained until you delete it. Premium users: Data retained while subscription active, plus 30-day grace period after cancellation. Account deletion removes all data within 30 days.',
           ),
           _buildInfoCard(
             'Complete Data Removal',
-            'To completely remove all app data, simply uninstall the app from your device. This will delete the app\'s database and all document information. Your original files will remain on your device.',
+            'Free users: Uninstall the app. Premium users: Request account deletion through the app - all cloud data permanently deleted within 30 days.',
           ),
           const SizedBox(height: 24),
+          const Text(
+            'Third-Party Services',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildInfoCard(
+            'Amazon Web Services (Premium Only)',
+            'AWS Cognito (authentication), DynamoDB (metadata), S3 (files). AWS complies with SOC 2, ISO 27001, GDPR. AWS does not access your document content.',
+          ),
+          _buildInfoCard(
+            'Payment Processing (Premium Only)',
+            'In-app purchases processed by Google Play or Apple App Store. We verify subscription status but do not receive payment details.',
+          ),
+          const SizedBox(height: 12),
           const Text(
             'Third-Party Libraries',
             style: TextStyle(
@@ -131,7 +164,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const Text(
-            'The app uses the following open-source libraries for functionality:',
+            'The app uses the following open-source libraries:',
             style: TextStyle(fontSize: 14),
           ),
           const SizedBox(height: 8),
@@ -141,9 +174,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
           _buildLibraryItem('open_file', 'For opening files'),
           _buildLibraryItem(
               'flutter_local_notifications', 'For local notifications'),
+          _buildLibraryItem('AWS Amplify', 'For cloud sync (premium only)'),
           const SizedBox(height: 8),
           const Text(
-            'These libraries operate locally on your device and do not transmit data externally.',
+            'These libraries operate locally or connect only to AWS (premium users).',
             style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
           ),
           const SizedBox(height: 32),

@@ -3,6 +3,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import '../models/document.dart';
 import 'database_service.dart';
 import 'authentication_service.dart';
+import 'analytics_service.dart';
 
 /// Model representing storage information
 class StorageInfo {
@@ -41,6 +42,7 @@ class StorageManager {
   // Dependencies
   final DatabaseService _databaseService = DatabaseService.instance;
   final AuthenticationService _authService = AuthenticationService();
+  final AnalyticsService _analyticsService = AnalyticsService();
 
   // Default quota: 5GB for premium users
   static const int _defaultQuotaBytes = 5 * 1024 * 1024 * 1024;
@@ -119,6 +121,19 @@ class StorageManager {
 
       // Emit storage update event
       _emitStorageUpdate();
+
+      // Track storage analytics
+      final fileCount = documents.fold<int>(
+        0,
+        (sum, doc) => sum + doc.filePaths.length,
+      );
+
+      await _analyticsService.trackStorageUsage(
+        usedBytes: totalBytes,
+        quotaBytes: _defaultQuotaBytes,
+        documentCount: documents.length,
+        fileCount: fileCount,
+      );
 
       safePrint('Storage usage calculated: ${_formatBytes(totalBytes)}');
     } catch (e) {

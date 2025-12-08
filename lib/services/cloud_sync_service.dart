@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/document.dart';
 import '../models/sync_state.dart';
 import '../models/sync_event.dart';
-import '../models/conflict.dart';
 import 'document_sync_manager.dart';
 import 'file_sync_manager.dart';
 import 'authentication_service.dart';
 import 'subscription_service.dart' as sub;
 import 'database_service.dart';
+import 'analytics_service.dart';
 
 /// Enum representing conflict resolution strategies
 enum ConflictResolution {
@@ -91,6 +92,7 @@ class CloudSyncService {
       sub.SubscriptionService();
   final DatabaseService _databaseService = DatabaseService.instance;
   final Connectivity _connectivity = Connectivity();
+  final AnalyticsService _analyticsService = AnalyticsService();
 
   // State
   bool _isInitialized = false;
@@ -208,10 +210,10 @@ class CloudSyncService {
       throw Exception('CloudSyncService not initialized');
     }
 
-    // Check network connectivity
+    // Check network connectivity and settings
     final connectivityResult = await _connectivity.checkConnectivity();
-    if (!_isConnected(connectivityResult)) {
-      safePrint('No network connectivity, skipping sync');
+    if (!await _shouldSync(connectivityResult)) {
+      safePrint('Sync conditions not met, skipping sync');
       return;
     }
 
@@ -275,10 +277,10 @@ class CloudSyncService {
       }
     }
 
-    // Try to sync immediately if online
+    // Try to sync immediately if online and conditions are met
     try {
       final connectivityResult = await _connectivity.checkConnectivity();
-      if (_isConnected(connectivityResult)) {
+      if (await _shouldSync(connectivityResult)) {
         await _processSyncQueue();
       }
     } catch (e) {
@@ -308,12 +310,13 @@ class CloudSyncService {
     );
   }
 
-  void _handleConnectivityChange(List<ConnectivityResult> results) {
-    if (_isConnected(results)) {
-      safePrint('Network connectivity restored, processing sync queue');
+  void _handleConnectivityChange(List<ConnectivityResult> results) async {
+    if (await _shouldSync(results)) {
+      safePrint(
+          'Network connectivity restored and sync conditions met, processing sync queue');
       _processSyncQueue();
     } else {
-      safePrint('Network connectivity lost');
+      safePrint('Network connectivity changed but sync conditions not met');
     }
   }
 
@@ -322,6 +325,36 @@ class CloudSyncService {
         result == ConnectivityResult.wifi ||
         result == ConnectivityResult.mobile ||
         result == ConnectivityResult.ethernet);
+  }
+
+  /// Check if sync should proceed based on connectivity and settings
+  Future<bool> _shouldSync(List<ConnectivityResult> results) async {
+    // Check if sync is paused
+    final prefs = await SharedPreferences.getInstance();
+    final syncPaused = prefs.getBool('sync_paused') ?? false;
+    if (syncPaused) {
+      safePrint('Sync is paused by user');
+      return false;
+    }
+
+    // Check if connected
+    if (!_isConnected(results)) {
+      safePrint('No network connectivity');
+      return false;
+    }
+
+    // Check Wi-Fi only setting
+    final wifiOnly = prefs.getBool('sync_wifi_only') ?? false;
+    if (wifiOnly) {
+      final hasWifi = results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet);
+      if (!hasWifi) {
+        safePrint('Wi-Fi only mode enabled, but not on Wi-Fi');
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> _performPeriodicSync() async {
@@ -400,6 +433,7 @@ class CloudSyncService {
   }
 
   Future<void> _uploadDocument(Document document) async {
+    final startTime = DateTime.now();
     try {
       // Update sync state to syncing
       await _updateLocalDocumentSyncState(document.id!, SyncState.syncing);
@@ -407,13 +441,37 @@ class CloudSyncService {
       // Upload document metadata
       await _documentSyncManager.uploadDocument(document);
 
-      // Upload file attachments
-      for (final filePath in document.filePaths) {
-        await _fileSyncManager.uploadFile(filePath, document.id.toString());
+      // Upload file attachments in parallel for better performance
+      if (document.filePaths.isNotEmpty) {
+        final fileStartTime = DateTime.now();
+        await _fileSyncManager.uploadFilesParallel(
+          document.filePaths,
+          document.id.toString(),
+        );
+        final fileLatency =
+            DateTime.now().difference(fileStartTime).inMilliseconds;
+
+        // Track file upload analytics
+        await _analyticsService.trackSyncEvent(
+          type: AnalyticsSyncEventType.fileUpload,
+          success: true,
+          latencyMs: fileLatency,
+          documentId: document.id.toString(),
+        );
       }
 
       // Update sync state to synced
       await _updateLocalDocumentSyncState(document.id!, SyncState.synced);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track document upload analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpload,
+        success: true,
+        latencyMs: latency,
+        documentId: document.id.toString(),
+      );
 
       _emitEvent(SyncEvent(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -423,11 +481,24 @@ class CloudSyncService {
       ));
     } catch (e) {
       await _updateLocalDocumentSyncState(document.id!, SyncState.error);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed upload analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpload,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.toString(),
+        documentId: document.id.toString(),
+      );
+
       rethrow;
     }
   }
 
   Future<void> _updateDocument(Document document) async {
+    final startTime = DateTime.now();
     try {
       // Update sync state to syncing
       await _updateLocalDocumentSyncState(document.id!, SyncState.syncing);
@@ -437,6 +508,16 @@ class CloudSyncService {
 
       // Update sync state to synced
       await _updateLocalDocumentSyncState(document.id!, SyncState.synced);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track document update analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpdate,
+        success: true,
+        latencyMs: latency,
+        documentId: document.id.toString(),
+      );
 
       _emitEvent(SyncEvent(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -448,6 +529,17 @@ class CloudSyncService {
       // Conflict detected
       await _updateLocalDocumentSyncState(document.id!, SyncState.conflict);
 
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed update analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpdate,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.message,
+        documentId: document.id.toString(),
+      );
+
       _emitEvent(SyncEvent(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         type: SyncEventType.conflictDetected,
@@ -458,11 +550,24 @@ class CloudSyncService {
       rethrow;
     } catch (e) {
       await _updateLocalDocumentSyncState(document.id!, SyncState.error);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed update analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpdate,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.toString(),
+        documentId: document.id.toString(),
+      );
+
       rethrow;
     }
   }
 
   Future<void> _deleteDocument(Document document) async {
+    final startTime = DateTime.now();
     try {
       // Update sync state to syncing
       await _updateLocalDocumentSyncState(document.id!, SyncState.syncing);
@@ -473,8 +578,29 @@ class CloudSyncService {
       // Delete files from remote
       for (final filePath in document.filePaths) {
         final s3Key = _generateS3Key(document.id.toString(), filePath);
+        final fileStartTime = DateTime.now();
         await _fileSyncManager.deleteFile(s3Key);
+        final fileLatency =
+            DateTime.now().difference(fileStartTime).inMilliseconds;
+
+        // Track file delete analytics
+        await _analyticsService.trackSyncEvent(
+          type: AnalyticsSyncEventType.fileDelete,
+          success: true,
+          latencyMs: fileLatency,
+          documentId: document.id.toString(),
+        );
       }
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track document delete analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentDelete,
+        success: true,
+        latencyMs: latency,
+        documentId: document.id.toString(),
+      );
 
       _emitEvent(SyncEvent(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -484,6 +610,18 @@ class CloudSyncService {
       ));
     } catch (e) {
       await _updateLocalDocumentSyncState(document.id!, SyncState.error);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed delete analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentDelete,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.toString(),
+        documentId: document.id.toString(),
+      );
+
       rethrow;
     }
   }
@@ -528,11 +666,23 @@ class CloudSyncService {
   }
 
   Future<void> _downloadDocument(Document remoteDoc) async {
+    final startTime = DateTime.now();
     try {
       // Download file attachments
       for (final filePath in remoteDoc.filePaths) {
         final s3Key = _generateS3Key(remoteDoc.id.toString(), filePath);
+        final fileStartTime = DateTime.now();
         await _fileSyncManager.downloadFile(s3Key, remoteDoc.id.toString());
+        final fileLatency =
+            DateTime.now().difference(fileStartTime).inMilliseconds;
+
+        // Track file download analytics
+        await _analyticsService.trackSyncEvent(
+          type: AnalyticsSyncEventType.fileDownload,
+          success: true,
+          latencyMs: fileLatency,
+          documentId: remoteDoc.id.toString(),
+        );
       }
 
       // Update or insert document in local database
@@ -545,6 +695,16 @@ class CloudSyncService {
         await _databaseService.createDocument(remoteDoc);
       }
 
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track document download analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentDownload,
+        success: true,
+        latencyMs: latency,
+        documentId: remoteDoc.id.toString(),
+      );
+
       _emitEvent(SyncEvent(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         type: SyncEventType.documentDownloaded,
@@ -553,6 +713,18 @@ class CloudSyncService {
       ));
     } catch (e) {
       safePrint('Error downloading document: $e');
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed download analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentDownload,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.toString(),
+        documentId: remoteDoc.id.toString(),
+      );
+
       rethrow;
     }
   }
@@ -592,6 +764,129 @@ class CloudSyncService {
   void _emitEvent(SyncEvent event) {
     if (!_syncEventController.isClosed) {
       _syncEventController.add(event);
+    }
+  }
+
+  /// Batch sync multiple documents for efficiency
+  /// Uploads up to 25 documents in a single batch operation
+  Future<void> batchSyncDocuments(List<Document> documents) async {
+    if (documents.isEmpty) {
+      return;
+    }
+
+    try {
+      safePrint('Starting batch sync for ${documents.length} documents');
+
+      // Update all documents to syncing state
+      for (final doc in documents) {
+        if (doc.id != null) {
+          await _updateLocalDocumentSyncState(doc.id!, SyncState.syncing);
+        }
+      }
+
+      // Batch upload documents
+      await _documentSyncManager.batchUploadDocuments(documents);
+
+      // Update all documents to synced state
+      for (final doc in documents) {
+        if (doc.id != null) {
+          await _updateLocalDocumentSyncState(doc.id!, SyncState.synced);
+        }
+      }
+
+      _emitEvent(SyncEvent(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        type: SyncEventType.syncCompleted,
+        message: 'Batch synced ${documents.length} documents',
+      ));
+
+      safePrint('Batch sync completed for ${documents.length} documents');
+    } catch (e) {
+      safePrint('Error during batch sync: $e');
+
+      // Mark all documents as error
+      for (final doc in documents) {
+        if (doc.id != null) {
+          await _updateLocalDocumentSyncState(doc.id!, SyncState.error);
+        }
+      }
+
+      rethrow;
+    }
+  }
+
+  /// Update document with delta sync - only send changed fields
+  /// More efficient than uploading the entire document
+  Future<void> updateDocumentDelta(
+    Document document,
+    Map<String, dynamic> changedFields,
+  ) async {
+    final startTime = DateTime.now();
+    try {
+      // Update sync state to syncing
+      await _updateLocalDocumentSyncState(document.id!, SyncState.syncing);
+
+      // Update document with delta
+      await _documentSyncManager.updateDocumentDelta(document, changedFields);
+
+      // Update sync state to synced
+      await _updateLocalDocumentSyncState(document.id!, SyncState.synced);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track document update analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpdate,
+        success: true,
+        latencyMs: latency,
+        documentId: document.id.toString(),
+      );
+
+      _emitEvent(SyncEvent(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        type: SyncEventType.documentUploaded,
+        documentId: document.id.toString(),
+        message:
+            'Document updated with delta sync (${changedFields.keys.length} fields)',
+      ));
+    } on VersionConflictException catch (e) {
+      // Conflict detected
+      await _updateLocalDocumentSyncState(document.id!, SyncState.conflict);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed update analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpdate,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.message,
+        documentId: document.id.toString(),
+      );
+
+      _emitEvent(SyncEvent(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        type: SyncEventType.conflictDetected,
+        documentId: document.id.toString(),
+        message: 'Conflict detected: ${e.message}',
+      ));
+
+      rethrow;
+    } catch (e) {
+      await _updateLocalDocumentSyncState(document.id!, SyncState.error);
+
+      final latency = DateTime.now().difference(startTime).inMilliseconds;
+
+      // Track failed update analytics
+      await _analyticsService.trackSyncEvent(
+        type: AnalyticsSyncEventType.documentUpdate,
+        success: false,
+        latencyMs: latency,
+        errorMessage: e.toString(),
+        documentId: document.id.toString(),
+      );
+
+      rethrow;
     }
   }
 

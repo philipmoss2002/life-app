@@ -75,11 +75,13 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
   }
 
   Future<void> _loadDocuments() async {
+    if (!mounted) return;
     setState(() => isLoading = true);
     final docs = selectedCategory == 'All'
         ? await DatabaseService.instance.getAllDocuments()
         : await DatabaseService.instance
             .getDocumentsByCategory(selectedCategory);
+    if (!mounted) return;
     setState(() {
       documents = docs;
       isLoading = false;

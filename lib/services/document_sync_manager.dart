@@ -260,4 +260,118 @@ class DocumentSyncManager {
       syncState: SyncState.fromJson(data['syncState']),
     );
   }
+
+  /// Batch upload multiple documents to DynamoDB
+  /// Uploads up to 25 documents in a single request for efficiency
+  Future<void> batchUploadDocuments(List<Document> documents) async {
+    if (documents.isEmpty) {
+      return;
+    }
+
+    try {
+      // DynamoDB BatchWriteItem supports max 25 items per request
+      const batchSize = 25;
+
+      for (int i = 0; i < documents.length; i += batchSize) {
+        final batch = documents.skip(i).take(batchSize).toList();
+
+        // Prepare batch data
+        final batchData = batch.map((document) {
+          if (document.userId == null || document.userId!.isEmpty) {
+            throw Exception('Document must have a userId to upload');
+          }
+
+          return {
+            'id': document.id?.toString() ??
+                DateTime.now().millisecondsSinceEpoch.toString(),
+            'userId': document.userId!,
+            'title': document.title,
+            'category': document.category,
+            'filePaths': document.filePaths,
+            'renewalDate': document.renewalDate?.toIso8601String(),
+            'notes': document.notes,
+            'createdAt': document.createdAt.toIso8601String(),
+            'lastModified': document.lastModified.toIso8601String(),
+            'version': document.version,
+            'syncState': SyncState.synced.toJson(),
+          };
+        }).toList();
+
+        // Batch write to DynamoDB
+        await _batchWriteToDynamoDB(batchData);
+
+        safePrint('Batch uploaded ${batch.length} documents');
+      }
+
+      safePrint('Successfully batch uploaded ${documents.length} documents');
+    } catch (e) {
+      safePrint('Error batch uploading documents: $e');
+      rethrow;
+    }
+  }
+
+  /// Update a document with delta sync - only send changed fields
+  /// More efficient than sending the entire document
+  Future<void> updateDocumentDelta(
+    Document document,
+    Map<String, dynamic> changedFields,
+  ) async {
+    try {
+      if (document.userId == null || document.userId!.isEmpty) {
+        throw Exception('Document must have a userId to update');
+      }
+      if (document.id == null) {
+        throw Exception('Document must have an id to update');
+      }
+
+      // Fetch current version from DynamoDB
+      final remoteDocument = await downloadDocument(document.id.toString());
+
+      // Check for version conflict
+      if (remoteDocument.version != document.version) {
+        throw VersionConflictException(
+          message: 'Version conflict detected for document ${document.id}',
+          localDocument: document,
+          remoteDocument: remoteDocument,
+        );
+      }
+
+      // Prepare delta update with only changed fields
+      final deltaUpdate = {
+        'id': document.id.toString(),
+        'userId': document.userId!,
+        'lastModified': DateTime.now().toIso8601String(),
+        'version': document.version + 1,
+        ...changedFields,
+      };
+
+      // Update item in DynamoDB with delta
+      await _updateItemInDynamoDB(deltaUpdate);
+
+      safePrint(
+          'Document updated with delta sync: ${document.id}, fields: ${changedFields.keys.join(", ")}');
+    } on VersionConflictException {
+      rethrow;
+    } catch (e) {
+      safePrint('Error updating document with delta: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _batchWriteToDynamoDB(
+      List<Map<String, dynamic>> batchData) async {
+    // TODO: Implement actual DynamoDB batch write operation using Amplify API
+    // This is a placeholder that simulates the operation
+    // In production, use GraphQL mutations or REST API call with batch operations
+    await Future.delayed(const Duration(milliseconds: 100));
+    safePrint('Simulated DynamoDB batch write: ${batchData.length} items');
+  }
+
+  Future<void> _updateItemInDynamoDB(Map<String, dynamic> deltaUpdate) async {
+    // TODO: Implement actual DynamoDB update operation using Amplify API
+    // This is a placeholder that simulates the operation
+    // In production, use GraphQL mutation or REST API call with UpdateItem
+    await Future.delayed(const Duration(milliseconds: 100));
+    safePrint('Simulated DynamoDB delta update: ${deltaUpdate['id']}');
+  }
 }

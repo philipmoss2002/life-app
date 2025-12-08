@@ -106,32 +106,34 @@ void main() {
     testWidgets('Holiday category shows Payment Due label',
         (WidgetTester tester) async {
       await tester.pumpWidget(const HouseholdDocsApp());
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(FloatingActionButton));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Select Holiday category
       await tester.tap(find.text('Home Insurance'));
-      await tester.pumpAndSettle();
+      await tester.pump();
       await tester.tap(find.text('Holiday').last);
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.text('Payment Due'), findsOneWidget);
     });
 
     testWidgets('Other category shows Date label', (WidgetTester tester) async {
       await tester.pumpWidget(const HouseholdDocsApp());
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(FloatingActionButton));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Select Other category
       await tester.tap(find.text('Home Insurance'));
-      await tester.pumpAndSettle();
+      await tester.pump();
       await tester.tap(find.text('Other').last);
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.text('Date'), findsOneWidget);
     });
@@ -139,10 +141,11 @@ void main() {
     testWidgets('Insurance categories show Renewal Date label',
         (WidgetTester tester) async {
       await tester.pumpWidget(const HouseholdDocsApp());
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(FloatingActionButton));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Home Insurance is selected by default
       expect(find.text('Renewal Date'), findsOneWidget);

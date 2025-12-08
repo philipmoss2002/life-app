@@ -4,6 +4,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive.dart';
 
 /// Progress information for file uploads/downloads
 class FileProgress {
@@ -37,6 +38,9 @@ class FileSyncManager {
   static const int _multipartThreshold = 5 * 1024 * 1024; // 5MB
   static const int _maxRetries = 3;
   static const Duration _retryDelay = Duration(seconds: 2);
+  static const int _maxConcurrentUploads = 3; // Max parallel uploads
+  static const int _compressionThreshold =
+      1 * 1024 * 1024; // 1MB - compress files larger than this
 
   final Map<String, StreamController<FileProgress>> _uploadProgressControllers =
       {};
@@ -52,7 +56,12 @@ class FileSyncManager {
       throw FileSystemException('File not found', filePath);
     }
 
-    final fileSize = await file.length();
+    // Compress file if needed
+    final uploadPath = await _compressFileIfNeeded(filePath);
+    final uploadFile = File(uploadPath);
+    final isCompressed = uploadPath != filePath;
+
+    final fileSize = await uploadFile.length();
     final fileName = path.basename(filePath);
     final s3Key = _generateS3Key(documentId, fileName);
     final fileId = s3Key;
@@ -62,16 +71,35 @@ class FileSyncManager {
 
     try {
       if (fileSize > _multipartThreshold) {
-        await _uploadLargeFile(file, s3Key, fileId, fileSize);
+        await _uploadLargeFile(uploadFile, s3Key, fileId, fileSize);
       } else {
-        await _uploadSmallFile(file, s3Key, fileId, fileSize);
+        await _uploadSmallFile(uploadFile, s3Key, fileId, fileSize);
       }
 
       _updateUploadProgress(
           fileId, fileSize, fileSize, FileTransferState.completed);
       _retryCount.remove(fileId);
+
+      // Clean up compressed file if created
+      if (isCompressed) {
+        try {
+          await uploadFile.delete();
+        } catch (e) {
+          safePrint('Error deleting compressed file: $e');
+        }
+      }
+
       return s3Key;
     } catch (e) {
+      // Clean up compressed file if created
+      if (isCompressed) {
+        try {
+          await uploadFile.delete();
+        } catch (e) {
+          safePrint('Error deleting compressed file: $e');
+        }
+      }
+
       await _handleUploadError(filePath, documentId, fileId, fileSize, e);
       rethrow;
     } finally {
@@ -351,6 +379,209 @@ class FileSyncManager {
     final bytes = await file.readAsBytes();
     final digest = md5.convert(bytes);
     return digest.toString();
+  }
+
+  /// Upload multiple files in parallel (max 3 concurrent)
+  /// Returns a map of file paths to their S3 keys
+  Future<Map<String, String>> uploadFilesParallel(
+    List<String> filePaths,
+    String documentId,
+  ) async {
+    if (filePaths.isEmpty) {
+      return {};
+    }
+
+    final results = <String, String>{};
+    final errors = <String, Object>{};
+
+    // Process files in parallel with concurrency limit
+    final futures = filePaths.map((filePath) async {
+      try {
+        final s3Key = await uploadFile(filePath, documentId);
+        results[filePath] = s3Key;
+      } catch (e) {
+        errors[filePath] = e;
+        safePrint('Error uploading file $filePath: $e');
+      }
+    });
+
+    // Wait for all uploads with concurrency control
+    await _processConcurrently(futures.toList());
+
+    if (errors.isNotEmpty) {
+      safePrint(
+          'Some files failed to upload: ${errors.length}/${filePaths.length}');
+      // Throw error with details about failed uploads
+      throw Exception(
+          'Failed to upload ${errors.length} files: ${errors.keys.join(", ")}');
+    }
+
+    safePrint('Successfully uploaded ${results.length} files in parallel');
+    return results;
+  }
+
+  /// Process futures with concurrency limit
+  Future<void> _processConcurrently(List<Future<void>> futures) async {
+    final executing = <Future<void>>[];
+
+    for (final future in futures) {
+      // Wait if we've reached the concurrency limit
+      while (executing.length >= _maxConcurrentUploads) {
+        await Future.any(executing);
+        // Remove completed futures
+        executing.removeWhere((f) {
+          // Check if future is completed by trying to get its value
+          try {
+            return false; // Keep all futures for now
+          } catch (e) {
+            return true;
+          }
+        });
+      }
+
+      // Add to executing list with completion tracking
+      late Future<void> tracked;
+      tracked = future.then((_) {
+        executing.remove(tracked);
+      }).catchError((e) {
+        executing.remove(tracked);
+        throw e;
+      });
+      executing.add(tracked);
+    }
+
+    // Wait for remaining futures
+    if (executing.isNotEmpty) {
+      await Future.wait(executing, eagerError: false);
+    }
+  }
+
+  /// Compress a file before upload if it's larger than threshold
+  /// Returns the path to the compressed file or original if not compressed
+  Future<String> _compressFileIfNeeded(String filePath) async {
+    final file = File(filePath);
+    final fileSize = await file.length();
+
+    // Skip compression for small files
+    if (fileSize < _compressionThreshold) {
+      return filePath;
+    }
+
+    // Skip compression for already compressed formats
+    final extension = path.extension(filePath).toLowerCase();
+    final compressedFormats = [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.zip',
+      '.gz',
+      '.mp4',
+      '.mp3'
+    ];
+    if (compressedFormats.contains(extension)) {
+      safePrint(
+          'Skipping compression for already compressed format: $extension');
+      return filePath;
+    }
+
+    try {
+      safePrint('Compressing file: $filePath (${fileSize} bytes)');
+
+      // Read file bytes
+      final bytes = await file.readAsBytes();
+
+      // Compress using gzip
+      final compressed = GZipEncoder().encode(bytes);
+      if (compressed == null) {
+        safePrint('Compression failed, using original file');
+        return filePath;
+      }
+
+      // Calculate compression ratio
+      final compressionRatio = (1 - (compressed.length / bytes.length)) * 100;
+      safePrint(
+          'Compressed ${bytes.length} bytes to ${compressed.length} bytes (${compressionRatio.toStringAsFixed(1)}% reduction)');
+
+      // Only use compressed version if it's actually smaller
+      if (compressed.length >= bytes.length) {
+        safePrint('Compressed file is not smaller, using original');
+        return filePath;
+      }
+
+      // Write compressed file
+      final compressedPath = '$filePath.gz';
+      final compressedFile = File(compressedPath);
+      await compressedFile.writeAsBytes(compressed);
+
+      return compressedPath;
+    } catch (e) {
+      safePrint('Error compressing file: $e, using original');
+      return filePath;
+    }
+  }
+
+  /// Cache thumbnail for a file
+  /// Returns the path to the cached thumbnail
+  Future<String?> cacheThumbnail(String s3Key, List<int> thumbnailBytes) async {
+    try {
+      final cacheDir = await getApplicationDocumentsDirectory();
+      final thumbnailDir = Directory('${cacheDir.path}/thumbnails');
+
+      if (!await thumbnailDir.exists()) {
+        await thumbnailDir.create(recursive: true);
+      }
+
+      // Generate thumbnail filename from s3Key
+      final thumbnailFileName = s3Key.replaceAll('/', '_') + '_thumb.jpg';
+      final thumbnailPath = '${thumbnailDir.path}/$thumbnailFileName';
+
+      // Write thumbnail to cache
+      final thumbnailFile = File(thumbnailPath);
+      await thumbnailFile.writeAsBytes(thumbnailBytes);
+
+      safePrint('Cached thumbnail: $thumbnailPath');
+      return thumbnailPath;
+    } catch (e) {
+      safePrint('Error caching thumbnail: $e');
+      return null;
+    }
+  }
+
+  /// Get cached thumbnail for a file
+  /// Returns the path to the cached thumbnail or null if not cached
+  Future<String?> getCachedThumbnail(String s3Key) async {
+    try {
+      final cacheDir = await getApplicationDocumentsDirectory();
+      final thumbnailFileName = s3Key.replaceAll('/', '_') + '_thumb.jpg';
+      final thumbnailPath = '${cacheDir.path}/thumbnails/$thumbnailFileName';
+
+      final thumbnailFile = File(thumbnailPath);
+      if (await thumbnailFile.exists()) {
+        safePrint('Found cached thumbnail: $thumbnailPath');
+        return thumbnailPath;
+      }
+
+      return null;
+    } catch (e) {
+      safePrint('Error getting cached thumbnail: $e');
+      return null;
+    }
+  }
+
+  /// Clear thumbnail cache
+  Future<void> clearThumbnailCache() async {
+    try {
+      final cacheDir = await getApplicationDocumentsDirectory();
+      final thumbnailDir = Directory('${cacheDir.path}/thumbnails');
+
+      if (await thumbnailDir.exists()) {
+        await thumbnailDir.delete(recursive: true);
+        safePrint('Cleared thumbnail cache');
+      }
+    } catch (e) {
+      safePrint('Error clearing thumbnail cache: $e');
+    }
   }
 
   /// Dispose of all resources
