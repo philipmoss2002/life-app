@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/authentication_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import 'sign_up_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -14,7 +15,6 @@ class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _authService = AuthenticationService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -38,14 +38,22 @@ class _SignInScreenState extends State<SignInScreen> {
     });
 
     try {
-      await _authService.signIn(
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final success = await authProvider.signIn(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
       if (mounted) {
-        // Navigate back to home screen with success
-        Navigator.pop(context, true);
+        if (success) {
+          // Navigate back to home screen with success
+          Navigator.pop(context, true);
+        } else {
+          setState(() {
+            _errorMessage = 'Failed to sign in. Please try again.';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       setState(() {

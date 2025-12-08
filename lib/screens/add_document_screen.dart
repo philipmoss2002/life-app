@@ -202,15 +202,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         notes: _notesController.text.isEmpty ? null : _notesController.text,
       );
 
-      final id = await DatabaseService.instance.createDocument(document);
-
-      // Update file labels if any
-      for (final filePath in filePaths) {
-        final label = fileLabels[filePath];
-        if (label != null && label.isNotEmpty) {
-          await DatabaseService.instance.updateFileLabel(id, filePath, label);
-        }
-      }
+      final id = await DatabaseService.instance.createDocumentWithLabels(
+        document,
+        fileLabels,
+      );
 
       // Schedule notification if renewal date is set
       if (renewalDate != null) {

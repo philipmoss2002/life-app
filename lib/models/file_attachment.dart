@@ -46,17 +46,19 @@ class FileAttachment {
 
   factory FileAttachment.fromMap(Map<String, dynamic> map) {
     return FileAttachment(
-      id: map['id'],
-      documentId: map['documentId'],
-      filePath: map['filePath'],
-      fileName: map['fileName'],
-      label: map['label'],
-      fileSize: map['fileSize'] ?? 0,
-      s3Key: map['s3Key'],
-      localPath: map['localPath'],
-      addedAt: DateTime.parse(map['addedAt']),
+      id: map['id'] as int?,
+      documentId: map['documentId']?.toString(),
+      filePath: map['filePath'] as String,
+      fileName: map['fileName'] as String,
+      label: map['label'] as String?,
+      fileSize: map['fileSize'] as int? ?? 0,
+      s3Key: map['s3Key'] as String?,
+      localPath: map['localPath'] as String?,
+      addedAt: map['addedAt'] != null
+          ? DateTime.parse(map['addedAt'] as String)
+          : DateTime.now(),
       syncState: map['syncState'] != null
-          ? SyncState.fromJson(map['syncState'])
+          ? SyncState.fromJson(map['syncState'] as String)
           : SyncState.notSynced,
     );
   }

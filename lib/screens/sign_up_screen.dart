@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/authentication_service.dart';
+import 'verify_email_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -70,19 +71,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       if (mounted) {
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Account created! Please check your email to verify your account.',
+        // Navigate to email verification screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VerifyEmailScreen(
+              email: _emailController.text.trim(),
             ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 5),
           ),
         );
-
-        // Navigate back to sign in
-        Navigator.pop(context);
       }
     } catch (e) {
       setState(() {

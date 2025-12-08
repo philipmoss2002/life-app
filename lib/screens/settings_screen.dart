@@ -26,6 +26,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadSubscriptionStatus();
+    // Check auth status when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      authProvider.checkAuthStatus();
+    });
   }
 
   Future<void> _loadSubscriptionStatus() async {
@@ -371,12 +376,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (result == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Signed in successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Refresh auth status
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.checkAuthStatus();
+
+      // Reload subscription status for authenticated user
+      await _loadSubscriptionStatus();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signed in successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     }
   }
 

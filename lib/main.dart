@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tz;
@@ -5,7 +6,7 @@ import 'screens/home_screen.dart';
 import 'services/database_service.dart';
 import 'services/notification_service.dart';
 import 'providers/auth_provider.dart';
-// import 'services/amplify_service.dart'; // Uncomment when ready to use cloud sync
+import 'services/amplify_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,22 +15,46 @@ void main() async {
   tz.initializeTimeZones();
 
   // Initialize database
-  await DatabaseService.instance.database;
+  try {
+    await DatabaseService.instance.database;
+    debugPrint('Database initialized successfully');
+  } catch (e) {
+    debugPrint('Failed to initialize database: $e');
+  }
 
   // Initialize notifications
-  await NotificationService.instance.initialize();
+  try {
+    await NotificationService.instance.initialize();
+    debugPrint('Notifications initialized successfully');
+  } catch (e) {
+    debugPrint('Failed to initialize notifications: $e');
+  }
 
-  // TODO: Initialize Amplify for cloud sync (Task 2+)
-  // Uncomment the following lines when AWS resources are configured:
-  // try {
-  //   await AmplifyService().initialize();
-  //   debugPrint('Amplify initialized successfully');
-  // } catch (e) {
-  //   debugPrint('Failed to initialize Amplify: $e');
-  //   // App can still work in local-only mode
-  // }
-
+  // Start the app immediately
   runApp(const HouseholdDocsApp());
+
+  // Initialize Amplify in the background (non-blocking)
+  _initializeAmplifyInBackground();
+}
+
+void _initializeAmplifyInBackground() {
+  Future.delayed(Duration.zero, () async {
+    try {
+      await AmplifyService().initialize().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint(
+              'Amplify initialization timed out - continuing in local-only mode');
+          throw TimeoutException('Amplify initialization timed out');
+        },
+      );
+      debugPrint('Amplify initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize Amplify: $e');
+      debugPrint('App will run in local-only mode');
+      // App can still work in local-only mode
+    }
+  });
 }
 
 class HouseholdDocsApp extends StatelessWidget {

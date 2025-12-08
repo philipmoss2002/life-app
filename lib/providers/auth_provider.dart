@@ -59,7 +59,10 @@ class AuthProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('Sign in error: $e');
-      return false;
+      _authState = AuthState.unauthenticated;
+      _currentUser = null;
+      notifyListeners();
+      rethrow; // Re-throw so the UI can handle the error
     }
   }
 

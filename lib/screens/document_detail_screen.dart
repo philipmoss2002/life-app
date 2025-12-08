@@ -156,11 +156,40 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
       // Update in database if document is saved
       if (currentDocument.id != null) {
-        await DatabaseService.instance.updateFileLabel(
-          currentDocument.id!,
-          filePath,
-          result.isEmpty ? null : result,
-        );
+        try {
+          final rowsAffected = await DatabaseService.instance.updateFileLabel(
+            currentDocument.id!,
+            filePath,
+            result.isEmpty ? null : result,
+          );
+
+          if (rowsAffected == 0 && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Warning: Label may not have been saved'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Label saved successfully'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Error updating label: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to save label: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
       }
     }
   }
@@ -202,10 +231,15 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         }
       }
 
-      // Add new files
+      // Add new files and update labels for all files
       for (final newFile in filePaths) {
         if (!oldFiles.contains(newFile)) {
+          // Add new file with label
           await db.addFileToDocument(
+              currentDocument.id!, newFile, fileLabels[newFile]);
+        } else {
+          // Update label for existing file
+          await db.updateFileLabel(
               currentDocument.id!, newFile, fileLabels[newFile]);
         }
       }
