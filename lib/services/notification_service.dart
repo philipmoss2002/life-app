@@ -74,4 +74,64 @@ class NotificationService {
   Future<void> cancelReminder(int id) async {
     await _notifications.cancel(id);
   }
+
+  /// Show a notification for a sync conflict
+  Future<void> showConflictNotification(
+    String documentId,
+    String documentTitle,
+  ) async {
+    // Use a unique ID based on document ID hash
+    final notificationId = documentId.hashCode;
+
+    await _notifications.show(
+      notificationId,
+      'Sync Conflict Detected',
+      'Document "$documentTitle" has conflicting changes. Tap to resolve.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'conflict_channel',
+          'Sync Conflicts',
+          channelDescription: 'Notifications for synchronization conflicts',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+  }
+
+  /// Cancel a conflict notification
+  Future<void> cancelConflictNotification(String documentId) async {
+    final notificationId = documentId.hashCode;
+    await _notifications.cancel(notificationId);
+  }
+
+  /// Show a notification when conflicts are resolved
+  Future<void> showConflictResolvedNotification(String documentTitle) async {
+    await _notifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      'Conflict Resolved',
+      'Document "$documentTitle" conflict has been resolved.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'conflict_channel',
+          'Sync Conflicts',
+          channelDescription: 'Notifications for synchronization conflicts',
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+  }
 }

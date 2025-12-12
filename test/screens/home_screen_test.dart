@@ -1,27 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:household_docs_app/screens/home_screen.dart';
+import '../test_helpers.dart';
 
 void main() {
+  setUpAll(() {
+    setupWidgetTest();
+  });
+
   group('Home Screen Tests', () {
     testWidgets('Home screen should display title',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
       expect(find.text('Household Documents'), findsOneWidget);
     });
 
     testWidgets('Home screen should display category filters',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
       await tester.pumpAndSettle();
 
@@ -35,11 +32,7 @@ void main() {
 
     testWidgets('Home screen should display add button',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
       expect(find.byType(FloatingActionButton), findsOneWidget);
       expect(find.byIcon(Icons.add), findsOneWidget);
@@ -47,22 +40,14 @@ void main() {
 
     testWidgets('Home screen should display upcoming renewals icon',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
       expect(find.byIcon(Icons.notifications_active), findsOneWidget);
     });
 
     testWidgets('Home screen should display empty state when no documents',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
       await tester.pumpAndSettle();
 
@@ -72,11 +57,7 @@ void main() {
 
     testWidgets('Tapping add button should navigate to add document screen',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
       await tester.pumpAndSettle();
 
@@ -88,17 +69,13 @@ void main() {
 
     testWidgets('Category filter should be selectable',
         (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: HomeScreen(),
-        ),
-      );
+      await tester.pumpWidget(wrapWithProviders(const HomeScreen()));
 
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       // Tap on Holiday category
       await tester.tap(find.text('Holiday'));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       // Verify Holiday chip is selected
       final holidayChip = tester.widget<FilterChip>(

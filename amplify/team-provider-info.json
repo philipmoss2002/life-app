@@ -1,0 +1,26 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-householddocsapp-dev-940d5-authRole",
+      "UnauthRoleArn": "arn:aws:iam::851725440788:role/amplify-householddocsapp-dev-940d5-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::851725440788:role/amplify-householddocsapp-dev-940d5-authRole",
+      "Region": "eu-west-2",
+      "DeploymentBucketName": "amplify-householddocsapp-dev-940d5-deployment",
+      "UnauthRoleName": "amplify-householddocsapp-dev-940d5-unauthRole",
+      "StackName": "amplify-householddocsapp-dev-940d5",
+      "StackId": "arn:aws:cloudformation:eu-west-2:851725440788:stack/amplify-householddocsapp-dev-940d5/145b9da0-d215-11f0-bce2-060597845099",
+      "AmplifyAppId": "d3hqwz867plxkq"
+    },
+    "categories": {
+      "auth": {
+        "householddocsapp1e3bd268": {}
+      },
+      "api": {
+        "householddocsapp": {}
+      },
+      "storage": {
+        "fileAttachments": {}
+      }
+    }
+  }
+}

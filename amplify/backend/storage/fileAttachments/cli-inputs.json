@@ -1,0 +1,14 @@
+{
+  "resourceName": "fileAttachments",
+  "policyUUID": "0e10656c",
+  "bucketName": "household-docs-files-dev",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ",
+    "DELETE"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}

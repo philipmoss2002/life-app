@@ -4,8 +4,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:pdfx/pdfx.dart';
 import '../models/document.dart';
+import '../models/sync_state.dart';
+import '../models/conflict.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
+import '../services/conflict_resolution_service.dart';
+import 'conflict_resolution_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
   final Document document;
@@ -152,11 +156,40 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
       // Update in database if document is saved
       if (currentDocument.id != null) {
-        await DatabaseService.instance.updateFileLabel(
-          currentDocument.id!,
-          filePath,
-          result.isEmpty ? null : result,
-        );
+        try {
+          final rowsAffected = await DatabaseService.instance.updateFileLabel(
+            currentDocument.id!,
+            filePath,
+            result.isEmpty ? null : result,
+          );
+
+          if (rowsAffected == 0 && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Warning: Label may not have been saved'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Label saved successfully'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Error updating label: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to save label: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
       }
     }
   }
@@ -198,10 +231,15 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         }
       }
 
-      // Add new files
+      // Add new files and update labels for all files
       for (final newFile in filePaths) {
         if (!oldFiles.contains(newFile)) {
+          // Add new file with label
           await db.addFileToDocument(
+              currentDocument.id!, newFile, fileLabels[newFile]);
+        } else {
+          // Update label for existing file
+          await db.updateFileLabel(
               currentDocument.id!, newFile, fileLabels[newFile]);
         }
       }
@@ -282,6 +320,9 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Conflict resolution banner
+            if (currentDocument.syncState == SyncState.conflict)
+              _buildConflictBanner(),
             if (isEditing) ...[
               TextFormField(
                 controller: _titleController,
@@ -730,6 +771,104 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         return Icons.folder_zip;
       default:
         return Icons.insert_drive_file;
+    }
+  }
+
+  Widget _buildConflictBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red[300]!, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.red[800], size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sync Conflict Detected',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.red[900],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This document was modified on multiple devices. You need to resolve the conflict before making further changes.',
+            style: TextStyle(color: Colors.red[800], fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _handleConflictResolution,
+              icon: const Icon(Icons.build),
+              label: const Text('Resolve Conflict'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[700],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleConflictResolution() async {
+    // Get the conflict for this document
+    final conflictService = ConflictResolutionService();
+    final conflicts = await conflictService.getActiveConflicts();
+
+    final conflict = conflicts.firstWhere(
+      (c) => c.documentId == currentDocument.id.toString(),
+      orElse: () {
+        // If no conflict found in service, create a mock one for UI purposes
+        // In real scenario, this should be fetched from the sync service
+        return Conflict(
+          id: 'temp_${currentDocument.id}',
+          documentId: currentDocument.id.toString(),
+          localVersion: currentDocument,
+          remoteVersion: currentDocument, // This should come from remote
+          type: ConflictType.documentModified,
+        );
+      },
+    );
+
+    final result = await Navigator.push<Document>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ConflictResolutionScreen(conflict: conflict),
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        currentDocument = result;
+        _titleController.text = result.title;
+        _notesController.text = result.notes ?? '';
+        selectedCategory = result.category;
+        renewalDate = result.renewalDate;
+        filePaths = List.from(result.filePaths);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conflict resolved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 

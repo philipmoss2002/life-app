@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/document.dart';
@@ -21,7 +22,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -36,7 +37,12 @@ class DatabaseService {
         filePath TEXT,
         renewalDate TEXT,
         notes TEXT,
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        userId TEXT,
+        lastModified TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        syncState TEXT NOT NULL DEFAULT 'notSynced',
+        conflictId TEXT
       )
     ''');
 
@@ -68,10 +74,57 @@ class DatabaseService {
       ''');
     }
     if (oldVersion < 3) {
-      // Add label column to existing file_attachments table
-      await db.execute('''
-        ALTER TABLE file_attachments ADD COLUMN label TEXT
-      ''');
+      // Add label column to existing file_attachments table (if it doesn't exist)
+      try {
+        await db.execute('''
+          ALTER TABLE file_attachments ADD COLUMN label TEXT
+        ''');
+      } catch (e) {
+        // Column might already exist, ignore error
+        debugPrint('Label column might already exist: $e');
+      }
+    }
+    if (oldVersion < 4) {
+      // Add cloud sync columns to documents table (with error handling)
+      try {
+        await db.execute('''
+          ALTER TABLE documents ADD COLUMN userId TEXT
+        ''');
+      } catch (e) {
+        debugPrint('userId column might already exist: $e');
+      }
+
+      try {
+        await db.execute('''
+          ALTER TABLE documents ADD COLUMN lastModified TEXT NOT NULL DEFAULT '${DateTime.now().toIso8601String()}'
+        ''');
+      } catch (e) {
+        debugPrint('lastModified column might already exist: $e');
+      }
+
+      try {
+        await db.execute('''
+          ALTER TABLE documents ADD COLUMN version INTEGER NOT NULL DEFAULT 1
+        ''');
+      } catch (e) {
+        debugPrint('version column might already exist: $e');
+      }
+
+      try {
+        await db.execute('''
+          ALTER TABLE documents ADD COLUMN syncState TEXT NOT NULL DEFAULT 'notSynced'
+        ''');
+      } catch (e) {
+        debugPrint('syncState column might already exist: $e');
+      }
+
+      try {
+        await db.execute('''
+          ALTER TABLE documents ADD COLUMN conflictId TEXT
+        ''');
+      } catch (e) {
+        debugPrint('conflictId column might already exist: $e');
+      }
     }
   }
 
@@ -83,6 +136,22 @@ class DatabaseService {
     if (document.filePaths.isNotEmpty) {
       for (final filePath in document.filePaths) {
         await _addFileAttachment(id, filePath, null);
+      }
+    }
+
+    return id;
+  }
+
+  Future<int> createDocumentWithLabels(
+      Document document, Map<String, String?> fileLabels) async {
+    final db = await database;
+    final id = await db.insert('documents', document.toMap());
+
+    // Insert file attachments with labels
+    if (document.filePaths.isNotEmpty) {
+      for (final filePath in document.filePaths) {
+        final label = fileLabels[filePath];
+        await _addFileAttachment(id, filePath, label);
       }
     }
 
@@ -159,15 +228,16 @@ class DatabaseService {
     await _addFileAttachment(documentId, filePath, label);
   }
 
-  Future<void> updateFileLabel(
+  Future<int> updateFileLabel(
       int documentId, String filePath, String? label) async {
     final db = await database;
-    await db.update(
+    final rowsAffected = await db.update(
       'file_attachments',
       {'label': label},
       where: 'documentId = ? AND filePath = ?',
       whereArgs: [documentId, filePath],
     );
+    return rowsAffected;
   }
 
   Future<void> removeFileFromDocument(int documentId, String filePath) async {

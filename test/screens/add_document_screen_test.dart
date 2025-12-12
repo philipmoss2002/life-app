@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:household_docs_app/screens/add_document_screen.dart';
+import '../test_helpers.dart';
 
 void main() {
+  setUpAll(() {
+    setupWidgetTest();
+  });
+
   group('Add Document Screen Tests', () {
     testWidgets('Add document screen should display all form fields',
         (WidgetTester tester) async {
