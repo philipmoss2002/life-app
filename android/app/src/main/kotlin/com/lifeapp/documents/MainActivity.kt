@@ -1,4 +1,4 @@
-package com.example.household_docs_app
+package com.lifeapp.documents
 
 import io.flutter.embedding.android.FlutterActivity
 
