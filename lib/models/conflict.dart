@@ -1,4 +1,5 @@
-import 'document.dart';
+import 'Document.dart';
+import 'model_extensions.dart';
 
 /// Types of conflicts that can occur during synchronization
 enum ConflictType {
@@ -45,8 +46,8 @@ class Conflict {
     return Conflict(
       id: map['id'],
       documentId: map['documentId'],
-      localVersion: Document.fromMap(map['localVersion']),
-      remoteVersion: Document.fromMap(map['remoteVersion']),
+      localVersion: DocumentExtensions.fromMap(map['localVersion']),
+      remoteVersion: DocumentExtensions.fromMap(map['remoteVersion']),
       detectedAt: DateTime.parse(map['detectedAt']),
       type: ConflictType.values.firstWhere(
         (t) => t.name == map['type'],

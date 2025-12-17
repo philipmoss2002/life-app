@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
-import '../models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import '../models/Document.dart';
 import '../models/sync_state.dart';
 import 'database_service.dart';
 import 'document_sync_manager.dart';
-import 'file_sync_manager.dart';
+import 'simple_file_sync_manager.dart';
 import 'authentication_service.dart';
 
 /// Enum representing migration status
@@ -106,7 +107,7 @@ class MigrationService {
   // Dependencies
   final DatabaseService _databaseService = DatabaseService.instance;
   final DocumentSyncManager _documentSyncManager = DocumentSyncManager();
-  final FileSyncManager _fileSyncManager = FileSyncManager();
+  final SimpleFileSyncManager _fileSyncManager = SimpleFileSyncManager();
   final AuthenticationService _authService = AuthenticationService();
 
   // State
@@ -179,9 +180,7 @@ class MigrationService {
 
         try {
           // Add userId to document if not present
-          final documentWithUserId = document.userId == null
-              ? document.copyWith(userId: user.id)
-              : document;
+          final documentWithUserId = document.copyWith(userId: user.id);
 
           // Migrate the document
           await _migrateDocument(documentWithUserId);
@@ -198,7 +197,7 @@ class MigrationService {
           safePrint('Failed to migrate document ${document.id}: $e');
 
           final failure = MigrationFailure(
-            documentId: document.id?.toString() ?? 'unknown',
+            documentId: document.id.toString(),
             documentTitle: document.title,
             error: e.toString(),
           );
@@ -304,8 +303,17 @@ class MigrationService {
         try {
           // Find the document in local database
           final document = localDocuments.firstWhere(
-            (doc) => doc.id?.toString() == failure.documentId,
-            orElse: () => Document(title: '', category: ''),
+            (doc) => doc.id.toString() == failure.documentId,
+            orElse: () => Document(
+              userId: 'unknown',
+              title: '',
+              category: '',
+              filePaths: [],
+              createdAt: amplify_core.TemporalDateTime.now(),
+              lastModified: amplify_core.TemporalDateTime.now(),
+              version: 0,
+              syncState: SyncState.notSynced.toJson(),
+            ),
           );
 
           if (document.title.isEmpty) {
@@ -315,9 +323,7 @@ class MigrationService {
           }
 
           // Add userId to document if not present
-          final documentWithUserId = document.userId == null
-              ? document.copyWith(userId: user.id)
-              : document;
+          final documentWithUserId = document.copyWith(userId: user.id);
 
           // Retry migration
           await _migrateDocument(documentWithUserId);
@@ -397,7 +403,8 @@ class MigrationService {
       }
 
       // Update local document sync state to synced
-      final updatedDocument = document.copyWith(syncState: SyncState.synced);
+      final updatedDocument =
+          document.copyWith(syncState: SyncState.synced.toJson());
       await _databaseService.updateDocument(updatedDocument);
 
       safePrint('Successfully migrated document ${document.id}');
@@ -436,13 +443,22 @@ class MigrationService {
 
       // Verify each local document (except failed ones) exists in remote
       for (final localDoc in localDocuments) {
-        if (failedDocumentIds.contains(localDoc.id?.toString())) {
+        if (failedDocumentIds.contains(localDoc.id.toString())) {
           continue;
         }
 
         final remoteDoc = remoteDocuments.firstWhere(
           (doc) => doc.id == localDoc.id,
-          orElse: () => Document(title: '', category: ''),
+          orElse: () => Document(
+            userId: 'unknown',
+            title: '',
+            category: '',
+            filePaths: [],
+            createdAt: amplify_core.TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
+            version: 0,
+            syncState: SyncState.notSynced.toJson(),
+          ),
         );
 
         if (remoteDoc.title.isEmpty) {
@@ -468,6 +484,6 @@ class MigrationService {
   /// Dispose resources
   Future<void> dispose() async {
     await _progressController.close();
-    await _fileSyncManager.dispose();
+    // SimpleFileSyncManager doesn't need disposal
   }
 }

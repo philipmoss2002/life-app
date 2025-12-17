@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/sync_state.dart';
 
 /// Model representing a sync analytics event
 class SyncAnalyticsEvent {
@@ -133,6 +132,7 @@ enum AuthEventType {
   signOut,
   passwordReset,
   tokenRefresh,
+  accountDeleted,
 }
 
 /// Analytics and monitoring service
@@ -471,6 +471,48 @@ class AnalyticsService {
     await _persistMetrics();
 
     safePrint('Analytics: All data reset');
+  }
+
+  /// Clear analytics data for user isolation
+  /// Called when user signs out to prevent data leakage between users
+  Future<void> clearUserAnalytics() async {
+    try {
+      // Clear in-memory data
+      _syncEvents.clear();
+      _authEvents.clear();
+      _conflictEvents.clear();
+      _storageSnapshots.clear();
+      _syncLatencies.clear();
+
+      _totalSyncAttempts = 0;
+      _successfulSyncs = 0;
+      _failedSyncs = 0;
+      _totalAuthAttempts = 0;
+      _failedAuthAttempts = 0;
+      _totalConflicts = 0;
+      _resolvedConflicts = 0;
+
+      // Clear persisted metrics from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('analytics_total_sync_attempts');
+      await prefs.remove('analytics_successful_syncs');
+      await prefs.remove('analytics_failed_syncs');
+      await prefs.remove('analytics_total_auth_attempts');
+      await prefs.remove('analytics_failed_auth_attempts');
+      await prefs.remove('analytics_total_conflicts');
+      await prefs.remove('analytics_resolved_conflicts');
+
+      safePrint('Analytics: User-specific data cleared for user isolation');
+    } catch (e) {
+      safePrint('Error clearing user analytics: $e');
+    }
+  }
+
+  /// Reset analytics for new user session
+  /// Called when a new user signs in to ensure clean state
+  Future<void> resetForNewUser() async {
+    await clearUserAnalytics();
+    safePrint('Analytics: Reset for new user session');
   }
 
   /// Dispose resources

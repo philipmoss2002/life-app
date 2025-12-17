@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:pdfx/pdfx.dart';
-import '../models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import '../models/Document.dart';
 import '../models/sync_state.dart';
-import '../models/conflict.dart';
+
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
 import '../services/conflict_resolution_service.dart';
@@ -46,7 +47,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     _titleController = TextEditingController(text: currentDocument.title);
     _notesController = TextEditingController(text: currentDocument.notes ?? '');
     selectedCategory = currentDocument.category;
-    renewalDate = currentDocument.renewalDate;
+    renewalDate = currentDocument.renewalDate?.getDateTimeInUtc();
     filePaths = List.from(currentDocument.filePaths);
     fileLabels = {};
     _loadFileLabels();
@@ -55,7 +56,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   Future<void> _loadFileLabels() async {
     if (currentDocument.id != null) {
       final attachments = await DatabaseService.instance
-          .getFileAttachmentsWithLabels(currentDocument.id!);
+          .getFileAttachmentsWithLabels(int.parse(currentDocument.id));
       setState(() {
         fileLabels = {
           for (var attachment in attachments)
@@ -158,7 +159,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       if (currentDocument.id != null) {
         try {
           final rowsAffected = await DatabaseService.instance.updateFileLabel(
-            currentDocument.id!,
+            int.parse(currentDocument.id),
             filePath,
             result.isEmpty ? null : result,
           );
@@ -210,12 +211,18 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     if (_formKey.currentState!.validate()) {
       final updatedDocument = Document(
         id: widget.document.id,
+        userId: widget.document.userId,
         title: _titleController.text,
         category: selectedCategory,
         filePaths: filePaths,
-        renewalDate: renewalDate,
+        renewalDate: renewalDate != null
+            ? amplify_core.TemporalDateTime(renewalDate!)
+            : null,
         notes: _notesController.text.isEmpty ? null : _notesController.text,
         createdAt: widget.document.createdAt,
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: widget.document.version + 1,
+        syncState: widget.document.syncState,
       );
 
       await DatabaseService.instance.updateDocument(updatedDocument);
@@ -227,7 +234,8 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       // Remove files that are no longer in the list
       for (final oldFile in oldFiles) {
         if (!filePaths.contains(oldFile)) {
-          await db.removeFileFromDocument(currentDocument.id!, oldFile);
+          await db.removeFileFromDocument(
+              int.parse(currentDocument.id), oldFile);
         }
       }
 
@@ -236,20 +244,21 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         if (!oldFiles.contains(newFile)) {
           // Add new file with label
           await db.addFileToDocument(
-              currentDocument.id!, newFile, fileLabels[newFile]);
+              int.parse(currentDocument.id), newFile, fileLabels[newFile]);
         } else {
           // Update label for existing file
           await db.updateFileLabel(
-              currentDocument.id!, newFile, fileLabels[newFile]);
+              int.parse(currentDocument.id), newFile, fileLabels[newFile]);
         }
       }
 
       // Cancel old notification and schedule new one if renewal date is set
       try {
-        await NotificationService.instance.cancelReminder(currentDocument.id!);
+        await NotificationService.instance
+            .cancelReminder(int.parse(currentDocument.id));
         if (renewalDate != null) {
           await NotificationService.instance.scheduleRenewalReminder(
-            currentDocument.id!,
+            int.parse(currentDocument.id),
             _titleController.text,
             renewalDate!,
           );
@@ -308,7 +317,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   _titleController.text = currentDocument.title;
                   _notesController.text = currentDocument.notes ?? '';
                   selectedCategory = currentDocument.category;
-                  renewalDate = currentDocument.renewalDate;
+                  renewalDate = currentDocument.renewalDate?.getDateTimeInUtc();
                   filePaths = List.from(currentDocument.filePaths);
                 });
               },
@@ -321,7 +330,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             // Conflict resolution banner
-            if (currentDocument.syncState == SyncState.conflict)
+            if (currentDocument.syncState == SyncState.conflict.toJson())
               _buildConflictBanner(),
             if (isEditing) ...[
               TextFormField(
@@ -486,7 +495,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               if (currentDocument.renewalDate != null)
                 _buildInfoCard(
                   _getDateLabel(currentDocument.category),
-                  '${currentDocument.renewalDate!.day}/${currentDocument.renewalDate!.month}/${currentDocument.renewalDate!.year}',
+                  _formatDate(currentDocument.renewalDate!.getDateTimeInUtc()),
                 ),
               if (currentDocument.filePaths.isNotEmpty) ...[
                 Card(
@@ -564,7 +573,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 _buildInfoCard('Notes', currentDocument.notes!),
               _buildInfoCard(
                 'Created',
-                '${currentDocument.createdAt.day}/${currentDocument.createdAt.month}/${currentDocument.createdAt.year}',
+                _formatDate(currentDocument.createdAt.getDateTimeInUtc()),
               ),
             ],
           ],
@@ -836,12 +845,13 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       orElse: () {
         // If no conflict found in service, create a mock one for UI purposes
         // In real scenario, this should be fetched from the sync service
-        return Conflict(
+        return DocumentConflict(
           id: 'temp_${currentDocument.id}',
           documentId: currentDocument.id.toString(),
-          localVersion: currentDocument,
-          remoteVersion: currentDocument, // This should come from remote
-          type: ConflictType.documentModified,
+          localDocument: currentDocument,
+          remoteDocument: currentDocument, // This should come from remote
+          type: ConflictType.concurrentModification,
+          detectedAt: DateTime.now(),
         );
       },
     );
@@ -859,7 +869,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         _titleController.text = result.title;
         _notesController.text = result.notes ?? '';
         selectedCategory = result.category;
-        renewalDate = result.renewalDate;
+        renewalDate = result.renewalDate?.getDateTimeInUtc();
         filePaths = List.from(result.filePaths);
       });
 
@@ -892,11 +902,17 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
-      await DatabaseService.instance.deleteDocument(currentDocument.id!);
-      await NotificationService.instance.cancelReminder(currentDocument.id!);
+      await DatabaseService.instance
+          .deleteDocument(int.parse(currentDocument.id));
+      await NotificationService.instance
+          .cancelReminder(int.parse(currentDocument.id));
       if (mounted) {
         Navigator.pop(context);
       }
     }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }

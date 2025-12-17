@@ -1,22 +1,71 @@
-# This "input" configures a global authorization rule to enable public access to
-# all models in this schema. Learn more about authorization rules here: https://docs.amplify.aws/cli/graphql/authorization-rules
-input AMPLIFY { globalAuthRule: AuthRule = { allow: public } } # FOR TESTING ONLY!
+# GraphQL Schema for Household Docs App Cloud Sync
+# This schema defines the Document and FileAttachment types for cloud synchronization
+# with proper authentication and authorization rules
 
-type Blog @model {
+# Document model - represents a household document
+type Document @model @auth(rules: [{allow: owner}]) {
   id: ID!
-  name: String!
-  posts: [Post] @hasMany
-}
-
-type Post @model {
-  id: ID!
+  userId: String! @index(name: "byUserId")
   title: String!
-  blog: Blog @belongsTo
-  comments: [Comment] @hasMany
+  category: String!
+  filePaths: [String!]!
+  renewalDate: AWSDateTime
+  notes: String
+  createdAt: AWSDateTime!
+  lastModified: AWSDateTime!
+  version: Int!
+  syncState: String!
+  conflictId: String
+  deleted: Boolean
+  deletedAt: AWSDateTime
+  
+  # Relationship: One document has many file attachments
+  fileAttachments: [FileAttachment] @hasMany(indexName: "byDocumentId", fields: ["id"])
 }
 
-type Comment @model {
+# FileAttachment model - represents files attached to documents
+type FileAttachment @model @auth(rules: [{allow: owner}]) {
   id: ID!
-  post: Post @belongsTo
-  content: String!
+  documentId: ID! @index(name: "byDocumentId", sortKeyFields: ["addedAt"])
+  filePath: String!
+  fileName: String!
+  label: String
+  fileSize: Int!
+  s3Key: String!
+  addedAt: AWSDateTime!
+  syncState: String!
+  
+  # Relationship: Each file attachment belongs to one document
+  document: Document @belongsTo(fields: ["documentId"])
+}
+
+# Device model - tracks devices connected to user account
+type Device @model @auth(rules: [{allow: owner}]) {
+  id: ID!
+  deviceName: String!
+  deviceType: String!
+  lastSyncTime: AWSDateTime!
+  isActive: Boolean!
+  createdAt: AWSDateTime!
+}
+
+# SyncEvent model - tracks sync events for monitoring
+type SyncEvent @model @auth(rules: [{allow: owner}]) {
+  id: ID!
+  eventType: String!
+  entityType: String!
+  entityId: String!
+  message: String
+  timestamp: AWSDateTime!
+  deviceId: String
+}
+
+# SyncState model - tracks overall sync state
+type SyncState @model @auth(rules: [{allow: owner}]) {
+  id: ID!
+  userId: String! @index(name: "byUserId")
+  lastSyncTime: AWSDateTime!
+  pendingOperations: Int!
+  conflictCount: Int!
+  errorCount: Int!
 }

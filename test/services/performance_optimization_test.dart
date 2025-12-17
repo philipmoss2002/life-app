@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/services/document_sync_manager.dart';
 import 'package:household_docs_app/services/file_sync_manager.dart';
 import 'package:household_docs_app/services/cloud_sync_service.dart';
@@ -33,12 +34,16 @@ void main() {
         final documents = List.generate(
           5,
           (i) => Document(
-            id: i,
+            id: i.toString(),
             userId: 'test-user-123',
             title: 'Document $i',
             category: 'Test',
-            createdAt: DateTime.now(),
-            lastModified: DateTime.now(),
+            filePaths: [],
+            syncState: 'notSynced',
+            createdAt: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
+            lastModified: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
             version: 1,
           ),
         );
@@ -52,12 +57,16 @@ void main() {
         final documents = List.generate(
           30,
           (i) => Document(
-            id: i,
+            id: i.toString(),
             userId: 'test-user-123',
             title: 'Document $i',
             category: 'Test',
-            createdAt: DateTime.now(),
-            lastModified: DateTime.now(),
+            filePaths: [],
+            syncState: 'notSynced',
+            createdAt: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
+            lastModified: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
             version: 1,
           ),
         );
@@ -70,12 +79,16 @@ void main() {
     group('Delta Sync', () {
       test('updateDocumentDelta should update only changed fields', () async {
         final document = Document(
-          id: 123,
+          id: '123',
           userId: 'test-user-123',
           title: 'Original Title',
           category: 'Test',
-          createdAt: DateTime.now(),
-          lastModified: DateTime.now(),
+          filePaths: [],
+          syncState: 'notSynced',
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
           version: 1,
         );
 
@@ -147,12 +160,16 @@ void main() {
 
       test('updateDocumentDelta should use delta sync', () async {
         final document = Document(
-          id: 123,
+          id: '123',
           userId: 'test-user-123',
           title: 'Test Document',
           category: 'Test',
-          createdAt: DateTime.now(),
-          lastModified: DateTime.now(),
+          filePaths: [],
+          syncState: 'notSynced',
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
           version: 1,
         );
 

@@ -5,17 +5,19 @@
 # Document model - represents a household document
 type Document @model @auth(rules: [{allow: owner}]) {
   id: ID!
+  userId: String!
   title: String!
   category: String!
+  filePaths: [String!]!
   renewalDate: AWSDateTime
   notes: String
   createdAt: AWSDateTime!
   lastModified: AWSDateTime!
   version: Int!
-  deleted: Boolean!
-  
-  # Relationship: One document has many file attachments
-  fileAttachments: [FileAttachment] @hasMany(indexName: "byDocument", fields: ["id"])
+  syncState: String!
+  conflictId: String
+  deleted: Boolean
+  deletedAt: AWSDateTime
 }
 
 # FileAttachment model - represents files attached to documents
@@ -28,9 +30,6 @@ type FileAttachment @model @auth(rules: [{allow: owner}]) {
   s3Key: String!
   localPath: String
   createdAt: AWSDateTime!
-  
-  # Relationship: Each file attachment belongs to one document
-  document: Document @belongsTo(fields: ["documentId"])
 }
 
 # Device model - tracks devices connected to user account

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../models/conflict.dart';
-import '../models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import '../models/Document.dart';
 import '../models/sync_state.dart';
 import '../services/conflict_resolution_service.dart';
 
 /// Screen for resolving synchronization conflicts
 class ConflictResolutionScreen extends StatefulWidget {
-  final Conflict conflict;
+  final DocumentConflict conflict;
 
   const ConflictResolutionScreen({
     super.key,
@@ -99,7 +99,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Document: ${widget.conflict.localVersion.title}',
+            'Document: ${widget.conflict.localDocument.title}',
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 16,
@@ -175,7 +175,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(8),
-          color: isSelected ? color.withOpacity(0.1) : null,
+          color: isSelected ? color.withValues(alpha: 0.1) : null,
         ),
         child: Row(
           children: [
@@ -239,7 +239,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
               Expanded(
                 child: _buildVersionCard(
                   'This Device',
-                  widget.conflict.localVersion,
+                  widget.conflict.localDocument,
                   Colors.blue,
                 ),
               ),
@@ -247,7 +247,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
               Expanded(
                 child: _buildVersionCard(
                   'Other Device',
-                  widget.conflict.remoteVersion,
+                  widget.conflict.remoteDocument,
                   Colors.green,
                 ),
               ),
@@ -264,7 +264,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
       decoration: BoxDecoration(
         border: Border.all(color: color),
         borderRadius: BorderRadius.circular(8),
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.05),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,11 +283,14 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
           _buildFieldRow('Notes', doc.notes ?? 'None'),
           _buildFieldRow(
             'Renewal Date',
-            doc.renewalDate != null ? _formatDate(doc.renewalDate!) : 'None',
+            doc.renewalDate != null
+                ? _formatDate(doc.renewalDate!.getDateTimeInUtc())
+                : 'None',
           ),
           _buildFieldRow('Files', '${doc.filePaths.length} attached'),
           _buildFieldRow('Version', doc.version.toString()),
-          _buildFieldRow('Modified', _formatDateTime(doc.lastModified)),
+          _buildFieldRow(
+              'Modified', _formatDateTime(doc.lastModified.getDateTimeInUtc())),
         ],
       ),
     );
@@ -317,26 +320,28 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
           const SizedBox(height: 12),
           _buildMergeFieldSelector(
             'Title',
-            widget.conflict.localVersion.title,
-            widget.conflict.remoteVersion.title,
+            widget.conflict.localDocument.title,
+            widget.conflict.remoteDocument.title,
           ),
           _buildMergeFieldSelector(
             'Category',
-            widget.conflict.localVersion.category,
-            widget.conflict.remoteVersion.category,
+            widget.conflict.localDocument.category,
+            widget.conflict.remoteDocument.category,
           ),
           _buildMergeFieldSelector(
             'Notes',
-            widget.conflict.localVersion.notes ?? 'None',
-            widget.conflict.remoteVersion.notes ?? 'None',
+            widget.conflict.localDocument.notes ?? 'None',
+            widget.conflict.remoteDocument.notes ?? 'None',
           ),
           _buildMergeFieldSelector(
             'Renewal Date',
-            widget.conflict.localVersion.renewalDate != null
-                ? _formatDate(widget.conflict.localVersion.renewalDate!)
+            widget.conflict.localDocument.renewalDate != null
+                ? _formatDate(widget.conflict.localDocument.renewalDate!
+                    .getDateTimeInUtc())
                 : 'None',
-            widget.conflict.remoteVersion.renewalDate != null
-                ? _formatDate(widget.conflict.remoteVersion.renewalDate!)
+            widget.conflict.remoteDocument.renewalDate != null
+                ? _formatDate(widget.conflict.remoteDocument.renewalDate!
+                    .getDateTimeInUtc())
                 : 'None',
           ),
           const SizedBox(height: 12),
@@ -604,8 +609,8 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
       } else {
         // Use the conflict resolution service for keep local/remote
         resolvedDocument = await _conflictService.resolveConflict(
-          widget.conflict,
-          _selectedResolution!,
+          widget.conflict.id,
+          _mapToResolutionStrategy(_selectedResolution!),
         );
       }
 
@@ -632,8 +637,8 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
   }
 
   Future<Document> _createCustomMerge() async {
-    final local = widget.conflict.localVersion;
-    final remote = widget.conflict.remoteVersion;
+    final local = widget.conflict.localDocument;
+    final remote = widget.conflict.remoteDocument;
 
     // Merge file paths - combine both lists and remove duplicates
     final mergedFilePaths = <String>{
@@ -643,14 +648,14 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
 
     // Merge file attachments - combine both lists
     final mergedAttachments = {
-      ...local.fileAttachments,
-      ...remote.fileAttachments,
+      ...(local.fileAttachments ?? []),
+      ...(remote.fileAttachments ?? []),
     }.toList();
 
     // Create merged document based on user selections
     final mergedDocument = Document(
       id: local.id,
-      userId: local.userId ?? remote.userId,
+      userId: local.userId,
       title: _useLocalField['title']! ? local.title : remote.title,
       category: _useLocalField['category']! ? local.category : remote.category,
       filePaths: mergedFilePaths,
@@ -659,25 +664,21 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
           ? local.renewalDate
           : remote.renewalDate,
       notes: _useLocalField['notes']! ? local.notes : remote.notes,
-      createdAt: local.createdAt.isBefore(remote.createdAt)
+      createdAt: local.createdAt
+              .getDateTimeInUtc()
+              .isBefore(remote.createdAt.getDateTimeInUtc())
           ? local.createdAt
           : remote.createdAt,
-      lastModified: DateTime.now(),
+      lastModified: amplify_core.TemporalDateTime.now(),
       version:
           (local.version > remote.version ? local.version : remote.version) + 1,
-      syncState: SyncState.pending,
+      syncState: SyncState.pending.toJson(),
       conflictId: null,
     );
 
-    // Create a custom conflict with the merged document as the local version
-    // and resolve it by keeping local (which is our custom merge)
-    final customConflict = widget.conflict.copyWith(
-      localVersion: mergedDocument,
-    );
-
-    return await _conflictService.resolveConflict(
-      customConflict,
-      ConflictResolution.keepLocal,
+    return await _conflictService.resolveConflictManually(
+      widget.conflict.id,
+      mergedDocument,
     );
   }
 
@@ -687,6 +688,18 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
 
   String _formatDateTime(DateTime dateTime) {
     return '${_formatDate(dateTime)} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  ConflictResolutionStrategy _mapToResolutionStrategy(
+      ConflictResolution resolution) {
+    switch (resolution) {
+      case ConflictResolution.keepLocal:
+        return ConflictResolutionStrategy.keepLocal;
+      case ConflictResolution.keepRemote:
+        return ConflictResolutionStrategy.keepRemote;
+      case ConflictResolution.merge:
+        return ConflictResolutionStrategy.merge;
+    }
   }
 
   @override

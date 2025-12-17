@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/document.dart';
+import '../models/Document.dart';
 import '../models/sync_state.dart';
-import '../models/conflict.dart';
+
+import '../models/model_extensions.dart';
 import '../services/database_service.dart';
 import '../services/subscription_service.dart';
 import '../services/conflict_resolution_service.dart';
@@ -71,16 +72,34 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
   }
 
   int get _conflictCount {
-    return documents.where((doc) => doc.syncState == SyncState.conflict).length;
+    return documents
+        .where((doc) => doc.syncState == SyncState.conflict.toJson())
+        .length;
   }
 
   Future<void> _loadDocuments() async {
     if (!mounted) return;
     setState(() => isLoading = true);
+
+    // Get current user from auth provider
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUser;
+
+    if (currentUser == null) {
+      // User not authenticated, show empty list
+      setState(() {
+        documents = [];
+        isLoading = false;
+      });
+      return;
+    }
+
+    // Load documents for the current user only
     final docs = selectedCategory == 'All'
-        ? await DatabaseService.instance.getAllDocuments()
+        ? await DatabaseService.instance.getUserDocuments(currentUser.id)
         : await DatabaseService.instance
-            .getDocumentsByCategory(selectedCategory);
+            .getUserDocumentsByCategory(currentUser.id, selectedCategory);
+
     if (!mounted) return;
     setState(() {
       documents = docs;
@@ -431,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
       itemCount: documents.length,
       itemBuilder: (context, index) {
         final doc = documents[index];
-        final hasConflict = doc.syncState == SyncState.conflict;
+        final hasConflict = doc.syncState == SyncState.conflict.toJson();
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -457,9 +476,9 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
                     Text(doc.category),
                     if (doc.renewalDate != null)
                       Text(
-                        '${_getDateLabel(doc.category)}: ${_formatDate(doc.renewalDate!)}',
+                        '${_getDateLabel(doc.category)}: ${_formatDate(doc.renewalDateTime!)}',
                         style: TextStyle(
-                          color: _isRenewalSoon(doc.renewalDate!)
+                          color: _isRenewalSoon(doc.renewalDateTime!)
                               ? Colors.red
                               : null,
                         ),
@@ -554,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
 
         return GestureDetector(
           onTap: () => _showSyncStatusDetail(doc),
-          child: _getSyncStatusIcon(doc.syncState),
+          child: _getSyncStatusIcon(doc.syncStateEnum),
         );
       },
     );
@@ -624,12 +643,13 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
       orElse: () {
         // If no conflict found in service, create a mock one for UI purposes
         // In real scenario, this should be fetched from the sync service
-        return Conflict(
+        return DocumentConflict(
           id: 'temp_${doc.id}',
           documentId: doc.id.toString(),
-          localVersion: doc,
-          remoteVersion: doc, // This should come from remote
-          type: ConflictType.documentModified,
+          localDocument: doc,
+          remoteDocument: doc, // This should come from remote
+          type: ConflictType.concurrentModification,
+          detectedAt: DateTime.now(),
         );
       },
     );

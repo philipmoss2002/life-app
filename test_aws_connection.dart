@@ -8,7 +8,8 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_storage_s3/amplify_storage_s3.dart';
 import 'package:amplify_api/amplify_api.dart';
-import 'amplifyconfiguration.dart';
+import 'lib/amplifyconfiguration.dart';
+import 'lib/models/ModelProvider.dart';
 
 void main() {
   runApp(const AWSConnectivityTestApp());
@@ -123,7 +124,9 @@ class _ConnectivityTestScreenState extends State<ConnectivityTestScreen> {
     _addResult('Storage Plugin', 'Testing...', TestStatus.running);
 
     try {
-      final result = await Amplify.Storage.list();
+      final result =
+          await Amplify.Storage.list(path: const StoragePath.fromString('/'))
+              .result;
       _updateResult(
         'Storage Plugin',
         'Plugin loaded. Found ${result.items.length} items',

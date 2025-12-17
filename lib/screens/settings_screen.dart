@@ -9,6 +9,17 @@ import 'subscription_status_screen.dart';
 import 'storage_usage_screen.dart';
 import 'devices_list_screen.dart';
 import 'sync_settings_screen.dart';
+import 'account_deletion_screen.dart';
+import 'subscription_debug_screen.dart';
+import 'sync_diagnostic_screen.dart';
+import 'detailed_sync_debug_screen.dart';
+import 's3_test_screen.dart';
+import 'path_debug_screen.dart';
+import 'upload_download_test_screen.dart';
+import 'error_trace_screen.dart';
+import 'minimal_sync_test_screen.dart';
+import 'api_test_screen.dart';
+import 'log_viewer_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -33,8 +44,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listen to auth changes and refresh subscription status
+    final authProvider = Provider.of<AuthProvider>(context);
+    if (authProvider.isAuthenticated) {
+      // User signed in, refresh subscription status
+      _loadSubscriptionStatus();
+    } else {
+      // User signed out, reset subscription status
+      if (mounted) {
+        setState(() {
+          _subscriptionStatus = SubscriptionStatus.none;
+          _isLoadingSubscription = false;
+        });
+      }
+    }
+  }
+
   Future<void> _loadSubscriptionStatus() async {
     try {
+      // Ensure subscription service is initialized
+      try {
+        await _subscriptionService.initialize();
+        debugPrint('Subscription service initialized in settings');
+      } catch (e) {
+        debugPrint('Subscription service already initialized or failed: $e');
+      }
+
       final status = await _subscriptionService.getSubscriptionStatus();
       if (mounted) {
         setState(() {
@@ -43,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } catch (e) {
+      debugPrint('Error loading subscription status: $e');
       if (mounted) {
         setState(() {
           _isLoadingSubscription = false;
@@ -130,6 +169,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Sign Out'),
             onTap: () => _handleSignOut(context, authProvider),
           ),
+          const Divider(),
+          ListTile(
+            leading: Icon(Icons.delete_forever, color: Colors.red.shade600),
+            title: Text(
+              'Delete Account',
+              style: TextStyle(color: Colors.red.shade600),
+            ),
+            subtitle:
+                const Text('Permanently delete your account and all data'),
+            onTap: () => _handleDeleteAccount(context),
+          ),
         ] else ...[
           ListTile(
             leading: const Icon(Icons.login),
@@ -210,7 +260,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     : 'Upgrade to Premium',
               ),
               subtitle: Text(_getSubscriptionSubtitle()),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_subscriptionStatus != SubscriptionStatus.active)
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _refreshSubscriptionStatus,
+                      tooltip: 'Check for purchases',
+                    ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
               onTap: () => _navigateToSubscriptionStatus(context),
             ),
           ],
@@ -363,7 +424,137 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ListTile(
           leading: const Icon(Icons.info_outlined),
           title: const Text('Version'),
-          subtitle: const Text('1.0.0'),
+          subtitle: const Text('1.0.8'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.bug_report),
+          title: const Text('Subscription Debug'),
+          subtitle: const Text('Debug subscription issues'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SubscriptionDebugScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.sync_problem),
+          title: const Text('Sync Diagnostics'),
+          subtitle: const Text('Diagnose sync issues'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SyncDiagnosticScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.api),
+          title: const Text('API Test'),
+          subtitle: const Text('Test Amplify API connectivity'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ApiTestScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.terminal),
+          title: const Text('App Logs'),
+          subtitle: const Text('View real-time app logs'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const LogViewerScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.bug_report_outlined),
+          title: const Text('Detailed Sync Debug'),
+          subtitle: const Text('Step-by-step sync testing'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const DetailedSyncDebugScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_upload),
+          title: const Text('S3 Direct Test'),
+          subtitle: const Text('Test S3 upload permissions'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const S3TestScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.folder_outlined),
+          title: const Text('S3 Path Debug'),
+          subtitle: const Text('View S3 path structure'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const PathDebugScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.sync_alt),
+          title: const Text('Upload/Download Test'),
+          subtitle: const Text('Test exact upload/download paths'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const UploadDownloadTestScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.search),
+          title: const Text('Error Trace'),
+          subtitle: const Text('Trace NoSuchKey error source'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ErrorTraceScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.science),
+          title: const Text('Minimal Sync Test'),
+          subtitle: const Text('Test upload without services'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const MinimalSyncTestScreen(),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -435,6 +626,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _handleDeleteAccount(BuildContext context) async {
+    // Show initial warning dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade600),
+            const SizedBox(width: 8),
+            const Text('Delete Account'),
+          ],
+        ),
+        content: const Text(
+          'This will permanently delete your account and all associated data.\n\n'
+          'This action cannot be undone.\n\n'
+          'Are you sure you want to continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      // Navigate to detailed account deletion screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const AccountDeletionScreen(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _refreshSubscriptionStatus() async {
+    setState(() {
+      _isLoadingSubscription = true;
+    });
+
+    try {
+      debugPrint('Manually refreshing subscription status...');
+
+      // Force check for purchases
+      await _subscriptionService.forceCheckPurchases();
+
+      // Wait a moment for the purchase stream to process
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Get updated status
+      final status = await _subscriptionService.getSubscriptionStatus();
+
+      if (mounted) {
+        setState(() {
+          _subscriptionStatus = status;
+          _isLoadingSubscription = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(status == SubscriptionStatus.active
+                ? 'Premium subscription found!'
+                : 'No active subscription found'),
+            backgroundColor: status == SubscriptionStatus.active
+                ? Colors.green
+                : Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error refreshing subscription: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingSubscription = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error checking subscription: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

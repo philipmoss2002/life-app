@@ -1,9 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faker/faker.dart';
 import 'package:household_docs_app/services/cloud_sync_service.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/models/sync_state.dart';
 import 'package:household_docs_app/models/sync_event.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import '../test_helpers.dart';
 
 /// **Feature: cloud-sync-premium, Property 5: Offline Queue Persistence**
@@ -69,13 +70,16 @@ void main() {
 
       // For now, verify the queue management methods exist
       final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: faker.randomGenerator
             .element(['Insurance', 'Warranty', 'Contract']),
         filePaths: [],
-        syncState: SyncState.notSynced,
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
+        syncState: SyncState.notSynced.toJson(),
       );
 
       // Verify queueDocumentSync method exists and is callable
@@ -99,7 +103,7 @@ void main() {
       final subscription = syncService.syncEvents.listen((event) {
         // Stream is functional
         expect(event.id, isNotNull);
-        expect(event.type, isNotNull);
+        expect(event.eventType, isNotNull);
         expect(event.timestamp, isNotNull);
       });
 
@@ -111,13 +115,16 @@ void main() {
       final documents = List.generate(
         10,
         (index) => Document(
-          id: faker.randomGenerator.integer(10000),
+          id: faker.randomGenerator.integer(10000).toString(),
           userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
           filePaths: [],
-          syncState: SyncState.notSynced,
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
+          syncState: SyncState.notSynced.toJson(),
         ),
       );
 
@@ -187,12 +194,15 @@ void main() {
 
     test('queueDocumentSync adds operation to queue', () async {
       final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
+        syncState: SyncState.notSynced.toJson(),
       );
 
       // Queue document
@@ -300,12 +310,15 @@ void main() {
         () async {
       // Test the integration flow structure
       final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
+        syncState: SyncState.notSynced.toJson(),
       );
 
       // Step 1: Queue document for sync
@@ -335,12 +348,15 @@ void main() {
       final documents = List.generate(
         5,
         (index) => Document(
-          id: faker.randomGenerator.integer(10000),
+          id: faker.randomGenerator.integer(10000).toString(),
           userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: 'Warranty',
           filePaths: [],
-          syncState: SyncState.notSynced,
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
+          syncState: SyncState.notSynced.toJson(),
         ),
       );
 
@@ -371,31 +387,39 @@ void main() {
     test('Integration: Sync queue processing structure', () async {
       // Test the queue processing structure
       final uploadDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: 'Upload Test',
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
+        syncState: SyncState.notSynced.toJson(),
       );
 
       final updateDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: 'Update Test',
         category: 'Warranty',
         filePaths: [],
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
         version: 2,
-        syncState: SyncState.pending,
+        syncState: SyncState.pending.toJson(),
       );
 
       final deleteDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: 'Delete Test',
         category: 'Contract',
         filePaths: [],
-        syncState: SyncState.synced,
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
+        syncState: SyncState.synced.toJson(),
       );
 
       // Queue different operation types
@@ -419,12 +443,15 @@ void main() {
 
       // Queue a document
       final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
+        syncState: SyncState.notSynced.toJson(),
       );
 
       await syncService.queueDocumentSync(testDoc, SyncOperationType.upload);
@@ -443,13 +470,16 @@ void main() {
       final documents = List.generate(
         20,
         (index) => Document(
-          id: faker.randomGenerator.integer(10000),
+          id: faker.randomGenerator.integer(10000).toString(),
           userId: faker.guid.guid(),
           title: 'Document $index',
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
           filePaths: [],
-          syncState: SyncState.notSynced,
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
+          syncState: SyncState.notSynced.toJson(),
         ),
       );
 

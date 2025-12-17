@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faker/faker.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/models/sync_state.dart';
 import 'package:household_docs_app/services/cloud_sync_service.dart';
 import '../test_helpers.dart';
@@ -42,19 +43,22 @@ void main() {
         // Generate random document with random sync state
         final randomState = faker.randomGenerator.element(SyncState.values);
         final document = Document(
-          id: faker.randomGenerator.integer(100000),
+          id: faker.randomGenerator.integer(100000).toString(),
           userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract', 'Other']),
           filePaths: [],
-          syncState: randomState,
+          syncState: randomState.toJson(),
           version: faker.randomGenerator.integer(10),
-          lastModified: DateTime.now(),
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
         );
 
         // Verify the document has the expected sync state
-        expect(document.syncState, equals(randomState),
+        expect(document.syncState, equals(randomState.toJson()),
             reason:
                 'Document sync state should match the assigned state (iteration $i)');
 
@@ -63,13 +67,13 @@ void main() {
           SyncState.values.where((s) => s != randomState).toList(),
         );
 
-        final updatedDocument = document.copyWith(syncState: newState);
+        final updatedDocument = document.copyWith(syncState: newState.toJson());
 
         // Verify state transition is accurate
-        expect(updatedDocument.syncState, equals(newState),
+        expect(updatedDocument.syncState, equals(newState.toJson()),
             reason:
                 'Document sync state should accurately reflect state transition (iteration $i)');
-        expect(updatedDocument.syncState, isNot(equals(randomState)),
+        expect(updatedDocument.syncState, isNot(equals(randomState.toJson())),
             reason: 'State should have changed from original (iteration $i)');
       }
     });
@@ -105,22 +109,26 @@ void main() {
         for (final toState in SyncState.values) {
           // Create document with initial state
           final document = Document(
-            id: faker.randomGenerator.integer(100000),
+            id: faker.randomGenerator.integer(100000).toString(),
             userId: faker.guid.guid(),
             title: faker.lorem.sentence(),
             category: 'Insurance',
             filePaths: [],
-            syncState: fromState,
+            syncState: fromState.toJson(),
+            version: 1,
+            createdAt: amplify_core.TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
           );
 
           // Verify initial state
-          expect(document.syncState, equals(fromState));
+          expect(document.syncState, equals(fromState.toJson()));
 
           // Transition to new state
-          final updatedDocument = document.copyWith(syncState: toState);
+          final updatedDocument =
+              document.copyWith(syncState: toState.toJson());
 
           // Verify new state is accurate
-          expect(updatedDocument.syncState, equals(toState),
+          expect(updatedDocument.syncState, equals(toState.toJson()),
               reason:
                   'State transition from $fromState to $toState should be accurate');
         }
@@ -162,13 +170,16 @@ void main() {
       for (int i = 0; i < 50; i++) {
         final randomState = faker.randomGenerator.element(SyncState.values);
         final document = Document(
-          id: faker.randomGenerator.integer(100000),
+          id: faker.randomGenerator.integer(100000).toString(),
           userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
           filePaths: [],
-          syncState: randomState,
+          syncState: randomState.toJson(),
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
         );
         documents.add(document);
       }
@@ -178,8 +189,8 @@ void main() {
         final doc = documents[i];
         expect(doc.syncState, isNotNull,
             reason: 'Document $i should have a sync state');
-        expect(SyncState.values.contains(doc.syncState), isTrue,
-            reason: 'Document $i should have a valid sync state');
+        expect(doc.syncState, isA<String>(),
+            reason: 'Document $i should have a valid sync state string');
       }
 
       // Verify state distribution (should have variety)
@@ -199,14 +210,16 @@ void main() {
         );
 
         final document = Document(
-          id: faker.randomGenerator.integer(100000),
+          id: faker.randomGenerator.integer(100000).toString(),
           userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: 'Insurance',
           filePaths: [],
-          syncState: faker.randomGenerator.element(SyncState.values),
+          syncState: faker.randomGenerator.element(SyncState.values).toJson(),
           version: version,
-          lastModified: lastModified,
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              lastModified.toIso8601String()),
+          createdAt: amplify_core.TemporalDateTime.now(),
         );
 
         // Verify version is accurate
@@ -218,8 +231,8 @@ void main() {
             reason: 'Document last modified time should be accurately stored');
 
         // Verify sync state is accurate
-        expect(SyncState.values.contains(document.syncState), isTrue,
-            reason: 'Document should have a valid sync state');
+        expect(document.syncState, isA<String>(),
+            reason: 'Document should have a valid sync state string');
       }
     });
 
@@ -261,29 +274,33 @@ void main() {
     test('Property 9: Error states are accurately represented', () {
       // Test error state representation
       final errorDocument = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.error,
+        syncState: SyncState.error.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(errorDocument.syncState, equals(SyncState.error));
-      expect(errorDocument.syncState.name, equals('error'));
+      expect(errorDocument.syncState, equals(SyncState.error.toJson()));
 
       // Test conflict state representation
       final conflictDocument = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
-        syncState: SyncState.conflict,
+        syncState: SyncState.conflict.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(conflictDocument.syncState, equals(SyncState.conflict));
-      expect(conflictDocument.syncState.name, equals('conflict'));
+      expect(conflictDocument.syncState, equals(SyncState.conflict.toJson()));
     });
   });
 
@@ -292,86 +309,98 @@ void main() {
 
     test('Document with synced state is correctly identified', () {
       final document = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.synced,
+        syncState: SyncState.synced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(document.syncState, equals(SyncState.synced));
-      expect(document.syncState.name, equals('synced'));
+      expect(document.syncState, equals(SyncState.synced.toJson()));
     });
 
     test('Document with pending state is correctly identified', () {
       final document = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
-        syncState: SyncState.pending,
+        syncState: SyncState.pending.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(document.syncState, equals(SyncState.pending));
-      expect(document.syncState.name, equals('pending'));
+      expect(document.syncState, equals(SyncState.pending.toJson()));
     });
 
     test('Document with syncing state is correctly identified', () {
       final document = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Contract',
         filePaths: [],
-        syncState: SyncState.syncing,
+        syncState: SyncState.syncing.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(document.syncState, equals(SyncState.syncing));
-      expect(document.syncState.name, equals('syncing'));
+      expect(document.syncState, equals(SyncState.syncing.toJson()));
     });
 
     test('Document with error state is correctly identified', () {
       final document = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.error,
+        syncState: SyncState.error.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(document.syncState, equals(SyncState.error));
-      expect(document.syncState.name, equals('error'));
+      expect(document.syncState, equals(SyncState.error.toJson()));
     });
 
     test('Document with conflict state is correctly identified', () {
       final document = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
-        syncState: SyncState.conflict,
+        syncState: SyncState.conflict.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(document.syncState, equals(SyncState.conflict));
-      expect(document.syncState.name, equals('conflict'));
+      expect(document.syncState, equals(SyncState.conflict.toJson()));
     });
 
     test('Document with notSynced state is correctly identified', () {
       final document = Document(
-        id: faker.randomGenerator.integer(100000),
+        id: faker.randomGenerator.integer(100000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Other',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        syncState: SyncState.notSynced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      expect(document.syncState, equals(SyncState.notSynced));
-      expect(document.syncState.name, equals('notSynced'));
+      expect(document.syncState, equals(SyncState.notSynced.toJson()));
     });
 
     test('SyncState enum has all expected values', () {

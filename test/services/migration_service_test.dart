@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faker/faker.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'package:household_docs_app/services/migration_service.dart';
 import 'package:household_docs_app/services/database_service.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:household_docs_app/models/Document.dart';
+import 'package:household_docs_app/models/sync_state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// **Feature: cloud-sync-premium, Property 13: Migration Completeness**
@@ -60,13 +62,18 @@ void main() {
 
       for (int i = 0; i < documentCount; i++) {
         final doc = Document(
-          id: i + 1,
+          id: (i + 1).toString(),
+          userId: 'test-user',
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Medical', 'Financial', 'Legal', 'Other']),
           filePaths: [],
           notes: faker.lorem.sentence(),
-          createdAt: DateTime.now().subtract(Duration(days: i)),
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().subtract(Duration(days: i)).toIso8601String()),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
+          syncState: SyncState.notSynced.toJson(),
         );
         testDocuments.add(doc);
       }

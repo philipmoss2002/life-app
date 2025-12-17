@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.8+31
 
 environment:
   sdk: '>=3.0.6 <4.0.0'
@@ -47,10 +47,13 @@ dependencies:
   amplify_flutter: ^2.0.0
   amplify_auth_cognito: ^2.0.0
   amplify_storage_s3: ^2.0.0
-  amplify_datastore: ^2.0.0
+  amplify_api: ^2.0.0
+  amplify_core: ^2.0.0
   
   # Additional packages for cloud sync
   connectivity_plus: ^6.0.0
+  device_info_plus: ^10.1.0
+  intl: ^0.19.0
   in_app_purchase: ^3.1.13
   in_app_purchase_android: ^0.3.0+11
   in_app_purchase_storekit: ^0.3.6+7
@@ -93,9 +96,9 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/life_app_logo_padded.png"
+  image_path: "assets/images/life_app_logo_latest.png"
   adaptive_icon_background: "#003D7A"
-  adaptive_icon_foreground: "assets/images/life_app_logo_padded.png"
+  adaptive_icon_foreground: "assets/images/life_app_logo_latest.png"
   remove_alpha_ios: true
   # Force square icon on Android (disable adaptive icon rounding)
   min_sdk_android: 21

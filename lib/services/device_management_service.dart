@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import '../models/device.dart';
 
 /// Service for managing connected devices
@@ -25,12 +26,11 @@ class DeviceManagementService {
     final deviceInfo = await _getDeviceInfo();
     final device = Device(
       id: deviceInfo['id']!,
-      userId: userId,
       deviceName: deviceInfo['name']!,
       deviceType: deviceInfo['type']!,
-      lastSyncTime: DateTime.now(),
-      registeredAt: DateTime.now(),
+      lastSyncTime: amplify_core.TemporalDateTime.now(),
       isActive: true,
+      createdAt: amplify_core.TemporalDateTime.now(),
     );
 
     // In production, this would save to DynamoDB
@@ -51,7 +51,7 @@ class DeviceManagementService {
     final index = _mockDevices.indexWhere((device) => device.id == deviceId);
     if (index != -1) {
       _mockDevices[index] = _mockDevices[index].copyWith(
-        lastSyncTime: DateTime.now(),
+        lastSyncTime: amplify_core.TemporalDateTime.now(),
       );
     }
   }
@@ -97,47 +97,64 @@ class DeviceManagementService {
     final currentDevice = await _getDeviceInfo();
     _currentDeviceId = currentDevice['id'];
 
+    final now = amplify_core.TemporalDateTime.now();
+
     // Add current device
     _mockDevices.add(Device(
       id: currentDevice['id']!,
-      userId: 'user123',
       deviceName: currentDevice['name']!,
       deviceType: currentDevice['type']!,
-      lastSyncTime: DateTime.now(),
-      registeredAt: DateTime.now().subtract(const Duration(days: 5)),
+      lastSyncTime: now,
       isActive: true,
+      createdAt: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(days: 5)).toIso8601String()),
     ));
 
     // Add some mock devices for demonstration
     _mockDevices.add(Device(
       id: 'device_2',
-      userId: 'user123',
       deviceName: 'Samsung Galaxy S21',
       deviceType: 'phone',
-      lastSyncTime: DateTime.now().subtract(const Duration(hours: 2)),
-      registeredAt: DateTime.now().subtract(const Duration(days: 30)),
+      lastSyncTime: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(hours: 2)).toIso8601String()),
       isActive: true,
+      createdAt: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(days: 30)).toIso8601String()),
     ));
 
     _mockDevices.add(Device(
       id: 'device_3',
-      userId: 'user123',
       deviceName: 'iPad Pro',
       deviceType: 'tablet',
-      lastSyncTime: DateTime.now().subtract(const Duration(days: 7)),
-      registeredAt: DateTime.now().subtract(const Duration(days: 60)),
+      lastSyncTime: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(days: 7)).toIso8601String()),
       isActive: true,
+      createdAt: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(days: 60)).toIso8601String()),
     ));
 
     // Add an inactive device (hasn't synced in 90+ days)
     _mockDevices.add(Device(
       id: 'device_4',
-      userId: 'user123',
       deviceName: 'Old Phone',
       deviceType: 'phone',
-      lastSyncTime: DateTime.now().subtract(const Duration(days: 120)),
-      registeredAt: DateTime.now().subtract(const Duration(days: 365)),
+      lastSyncTime: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(days: 120)).toIso8601String()),
       isActive: false,
+      createdAt: amplify_core.TemporalDateTime.fromString(
+          DateTime.now().subtract(const Duration(days: 365)).toIso8601String()),
     ));
+  }
+
+  /// Check if device is inactive (hasn't synced in 90+ days)
+  bool isDeviceInactive(Device device) {
+    final lastSync = device.lastSyncTime.getDateTimeInUtc();
+    final cutoff = DateTime.now().subtract(const Duration(days: 90));
+    return lastSync.isBefore(cutoff);
+  }
+
+  /// Get device registration date (using createdAt)
+  amplify_core.TemporalDateTime getDeviceRegistrationDate(Device device) {
+    return device.createdAt;
   }
 }

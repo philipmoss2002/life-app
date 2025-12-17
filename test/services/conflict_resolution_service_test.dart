@@ -1,9 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faker/faker.dart';
-import 'package:household_docs_app/models/conflict.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:household_docs_app/models/conflict.dart' as conflict_model;
+import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/models/sync_state.dart';
 import 'package:household_docs_app/services/conflict_resolution_service.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 
 /// **Feature: cloud-sync-premium, Property 6: Conflict Detection**
 /// **Validates: Requirements 6.1, 6.2**
@@ -17,10 +18,13 @@ void main() {
 
     setUp(() {
       conflictService = ConflictResolutionService();
+      // Clear any existing conflicts
+      conflictService.clearActiveConflicts();
     });
 
     tearDown(() {
-      conflictService.dispose();
+      // Don't dispose the service between tests to avoid stream controller issues
+      // conflictService.dispose();
     });
 
     /// Property 6: Conflict Detection
@@ -45,14 +49,14 @@ void main() {
         final localVersion = baseDocument.copyWith(
           title: faker.lorem.sentence(),
           version: 2,
-          lastModified: DateTime.now().add(Duration(minutes: i + 1)),
+          lastModified: amplify_core.TemporalDateTime.now(),
         );
 
         // Create remote version - also modified from base (divergent)
         final remoteVersion = baseDocument.copyWith(
           title: faker.lorem.sentence(),
           version: 2,
-          lastModified: DateTime.now().add(Duration(minutes: i + 2)),
+          lastModified: amplify_core.TemporalDateTime.now(),
         );
 
         // Detect conflict
@@ -112,14 +116,16 @@ void main() {
         final localVersion = baseDocument.copyWith(
           title: faker.lorem.sentence(),
           version: 3,
-          lastModified: DateTime.now().add(Duration(minutes: i + 1)),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.utc(2023, 6, 15, 10, 0, 0).toIso8601String()),
         );
 
         // Remote has older version but was modified more recently
         final remoteVersion = baseDocument.copyWith(
           title: faker.lorem.sentence(),
           version: 2,
-          lastModified: DateTime.now().add(Duration(minutes: i + 10)),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.utc(2023, 6, 15, 10, 10, 0).toIso8601String()),
         );
 
         // Detect conflict
@@ -127,7 +133,9 @@ void main() {
             conflictService.detectConflict(localVersion, remoteVersion);
 
         // This scenario should detect a conflict
-        if (remoteVersion.lastModified.isAfter(localVersion.lastModified)) {
+        if (remoteVersion.lastModified
+            .getDateTimeInUtc()
+            .isAfter(localVersion.lastModified.getDateTimeInUtc())) {
           expect(conflict, isNotNull,
               reason:
                   'Conflict should be detected when remote modified after local');
@@ -140,7 +148,7 @@ void main() {
     });
 
     test('Property 6: Conflict stream emits detected conflicts', () async {
-      final conflicts = <Conflict>[];
+      final conflicts = <conflict_model.Conflict>[];
       final subscription = conflictService.conflictStream.listen((conflict) {
         conflicts.add(conflict);
       });
@@ -152,13 +160,13 @@ void main() {
         final localVersion = baseDocument.copyWith(
           title: 'Local ${faker.lorem.word()}',
           version: 2,
-          lastModified: DateTime.now().add(Duration(seconds: i)),
+          lastModified: amplify_core.TemporalDateTime.now(),
         );
 
         final remoteVersion = baseDocument.copyWith(
           title: 'Remote ${faker.lorem.word()}',
           version: 2,
-          lastModified: DateTime.now().add(Duration(seconds: i + 1)),
+          lastModified: amplify_core.TemporalDateTime.now(),
         );
 
         conflictService.detectConflict(localVersion, remoteVersion);
@@ -181,10 +189,13 @@ void main() {
 
     setUp(() {
       conflictService = ConflictResolutionService();
+      // Clear any existing conflicts
+      conflictService.clearActiveConflicts();
     });
 
     tearDown(() {
-      conflictService.dispose();
+      // Don't dispose the service between tests to avoid stream controller issues
+      // conflictService.dispose();
     });
 
     test('detectConflict returns null for same version', () {
@@ -198,17 +209,18 @@ void main() {
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
-        lastModified: DateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
       );
       final remote = baseDoc.copyWith(
         title: 'Remote Title',
         version: 2,
-        lastModified: DateTime.now().add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.now(),
       );
 
       final conflict = conflictService.detectConflict(local, remote);
       expect(conflict, isNotNull);
-      expect(conflict!.type, equals(ConflictType.documentModified));
+      expect(
+          conflict!.type, equals(conflict_model.ConflictType.documentModified));
     });
 
     test('getActiveConflicts returns empty list initially', () async {
@@ -222,12 +234,13 @@ void main() {
       final remote = baseDoc.copyWith(
         title: 'Remote',
         version: 2,
-        lastModified: DateTime.now().add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            DateTime.utc(2023, 6, 15, 12, 0, 1).toIso8601String()),
       );
 
       conflictService.detectConflict(local, remote);
 
-      final conflicts = await conflictService.getActiveConflicts();
+      final conflicts = conflictService.getActiveConflicts();
       expect(conflicts.length, equals(1));
     });
 
@@ -251,16 +264,18 @@ void main() {
 
     test('mergeDocuments uses most recent title', () async {
       final baseDoc = _generateRandomDocument(faker, version: 1);
-      final now = DateTime.now();
+      final now = DateTime.utc(2023, 6, 15, 12, 0, 0);
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
-        lastModified: now,
+        lastModified:
+            amplify_core.TemporalDateTime.fromString(now.toIso8601String()),
       );
       final remote = baseDoc.copyWith(
         title: 'Remote Title',
         version: 2,
-        lastModified: now.add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            now.add(Duration(seconds: 1)).toIso8601String()),
       );
 
       final merged = await conflictService.mergeDocuments(local, remote);
@@ -303,7 +318,7 @@ void main() {
 
       final merged = await conflictService.mergeDocuments(local, remote);
 
-      expect(merged.syncState, equals(SyncState.pending));
+      expect(merged.syncState, equals(SyncState.pending.toJson()));
     });
 
     test('conflictStream is broadcast stream', () {
@@ -315,12 +330,13 @@ void main() {
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
-        lastModified: DateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
       );
       final remote = baseDoc.copyWith(
         title: 'Remote Title',
         version: 2,
-        lastModified: DateTime.now().add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            DateTime.utc(2023, 6, 15, 12, 0, 1).toIso8601String()),
       );
 
       final conflict = conflictService.detectConflict(local, remote);
@@ -329,7 +345,7 @@ void main() {
       // Note: This test verifies the logic but won't actually update the database
       // since we're not using a real database service in this test
       try {
-        final resolved = await conflictService.resolveConflict(
+        final resolved = await conflictService.resolveConflictNew(
           conflict!,
           ConflictResolution.keepLocal,
         );
@@ -348,19 +364,20 @@ void main() {
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
-        lastModified: DateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
       );
       final remote = baseDoc.copyWith(
         title: 'Remote Title',
         version: 2,
-        lastModified: DateTime.now().add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            DateTime.utc(2023, 6, 15, 12, 0, 1).toIso8601String()),
       );
 
       final conflict = conflictService.detectConflict(local, remote);
       expect(conflict, isNotNull);
 
       try {
-        final resolved = await conflictService.resolveConflict(
+        final resolved = await conflictService.resolveConflictNew(
           conflict!,
           ConflictResolution.keepRemote,
         );
@@ -380,20 +397,21 @@ void main() {
         title: 'Local Title',
         filePaths: ['/local/file.pdf'],
         version: 2,
-        lastModified: DateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
       );
       final remote = baseDoc.copyWith(
         title: 'Remote Title',
         filePaths: ['/remote/file.pdf'],
         version: 2,
-        lastModified: DateTime.now().add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            DateTime.utc(2023, 6, 15, 12, 0, 1).toIso8601String()),
       );
 
       final conflict = conflictService.detectConflict(local, remote);
       expect(conflict, isNotNull);
 
       try {
-        final resolved = await conflictService.resolveConflict(
+        final resolved = await conflictService.resolveConflictNew(
           conflict!,
           ConflictResolution.merge,
         );
@@ -418,7 +436,8 @@ void main() {
       final remote = baseDoc.copyWith(
         title: 'Remote',
         version: 2,
-        lastModified: DateTime.now().add(Duration(seconds: 1)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            DateTime.utc(2023, 6, 15, 12, 0, 1).toIso8601String()),
       );
 
       final conflict = conflictService.detectConflict(local, remote);
@@ -430,7 +449,7 @@ void main() {
       // The resolveConflict will fail without a real database, but it should
       // still remove the conflict from the active list before attempting the update
       try {
-        await conflictService.resolveConflict(
+        await conflictService.resolveConflictNew(
           conflict!,
           ConflictResolution.keepLocal,
         );
@@ -446,13 +465,16 @@ void main() {
     test('mergeDocuments handles null notes gracefully', () async {
       // Create a document without notes in the generator
       final baseDoc = Document(
-        id: faker.randomGenerator.integer(10000),
+        id: faker.randomGenerator.integer(10000).toString(),
         userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
         notes: null, // Explicitly null
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
         version: 1,
+        syncState: SyncState.synced.toJson(),
       );
 
       final local = baseDoc.copyWith(notes: null, version: 2);
@@ -475,15 +497,21 @@ void main() {
 
     test('mergeDocuments uses earlier createdAt date', () async {
       final baseDoc = _generateRandomDocument(faker, version: 1);
-      final earlierDate = DateTime(2023, 1, 1);
-      final laterDate = DateTime(2023, 6, 1);
+      final earlierDate = DateTime.utc(2023, 1, 1);
+      final laterDate = DateTime.utc(2023, 6, 1);
 
-      final local = baseDoc.copyWith(createdAt: laterDate, version: 2);
-      final remote = baseDoc.copyWith(createdAt: earlierDate, version: 2);
+      final local = baseDoc.copyWith(
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              laterDate.toIso8601String()),
+          version: 2);
+      final remote = baseDoc.copyWith(
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              earlierDate.toIso8601String()),
+          version: 2);
 
       final merged = await conflictService.mergeDocuments(local, remote);
 
-      expect(merged.createdAt, equals(earlierDate));
+      expect(merged.createdAt.getDateTimeInUtc(), equals(earlierDate));
     });
 
     test('mergeDocuments preserves userId', () async {
@@ -499,28 +527,33 @@ void main() {
 
     test('mergeDocuments handles renewal date from either version', () async {
       final baseDoc = _generateRandomDocument(faker, version: 1);
-      final renewalDate = DateTime(2025, 12, 31);
+      final renewalDate = DateTime.utc(2025, 12, 31);
 
-      final local = baseDoc.copyWith(renewalDate: renewalDate, version: 2);
+      final local = baseDoc.copyWith(
+          renewalDate: amplify_core.TemporalDateTime.fromString(
+              renewalDate.toIso8601String()),
+          version: 2);
       final remote = baseDoc.copyWith(renewalDate: null, version: 2);
 
       final merged = await conflictService.mergeDocuments(local, remote);
 
-      expect(merged.renewalDate, equals(renewalDate));
+      expect(merged.renewalDate?.getDateTimeInUtc(), equals(renewalDate));
     });
 
     test('detectConflict handles documents with different modification times',
         () {
       final baseDoc = _generateRandomDocument(faker, version: 1);
-      final now = DateTime.now();
+      final now = DateTime.utc(2023, 6, 15, 12, 0, 0);
 
       final doc1 = baseDoc.copyWith(
         version: 1,
-        lastModified: now,
+        lastModified:
+            amplify_core.TemporalDateTime.fromString(now.toIso8601String()),
       );
       final doc2 = baseDoc.copyWith(
         version: 1,
-        lastModified: now.add(Duration(seconds: 5)),
+        lastModified: amplify_core.TemporalDateTime.fromString(
+            DateTime.utc(2023, 6, 15, 12, 0, 5).toIso8601String()),
       );
 
       // Should detect conflict when same version but different modification times
@@ -533,17 +566,19 @@ void main() {
 /// Helper function to generate random documents for testing
 Document _generateRandomDocument(Faker faker, {int version = 1}) {
   return Document(
-    id: faker.randomGenerator.integer(10000),
+    id: faker.randomGenerator.integer(10000).toString(),
     userId: faker.guid.guid(),
     title: faker.lorem.sentence(),
     category: faker.randomGenerator.element(
         ['Insurance', 'Warranty', 'Subscription', 'Contract', 'Other']),
     filePaths: [faker.internet.httpsUrl()],
-    renewalDate: faker.date.dateTime(minYear: 2024, maxYear: 2025),
+    renewalDate: amplify_core.TemporalDateTime.fromString(
+        DateTime.utc(2024, 12, 31).toIso8601String()),
     notes: faker.lorem.sentences(3).join(' '),
-    createdAt: faker.date.dateTime(minYear: 2023, maxYear: 2024),
-    lastModified: DateTime.now(),
+    createdAt: amplify_core.TemporalDateTime.fromString(
+        DateTime.utc(2023, 6, 15).toIso8601String()),
+    lastModified: amplify_core.TemporalDateTime.now(),
     version: version,
-    syncState: SyncState.synced,
+    syncState: SyncState.synced.toJson(),
   );
 }
