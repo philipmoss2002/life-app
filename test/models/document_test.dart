@@ -7,7 +7,8 @@ import 'package:amplify_core/amplify_core.dart' as amplify_core;
 void main() {
   group('Document Model Tests', () {
     test('Document should be created with required fields', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Insurance',
         category: 'Home Insurance',
@@ -32,9 +33,9 @@ void main() {
       final createdAt = amplify_core.TemporalDateTime(DateTime(2025, 1, 1));
       final lastModified = amplify_core.TemporalDateTime(DateTime(2025, 1, 2));
 
-      final document = Document(
-        id: 'doc-1',
-        userId: 'test-user',
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'test-user',
         title: 'Car Insurance',
         category: 'Car Insurance',
         filePaths: ['/path/to/file.pdf'],
@@ -46,7 +47,7 @@ void main() {
         syncState: SyncState.synced.toJson(),
       );
 
-      expect(document.id, 'doc-1');
+      expect(document.syncId, 'doc-1');
       expect(document.title, 'Car Insurance');
       expect(document.category, 'Car Insurance');
       expect(document.filePaths, ['/path/to/file.pdf']);
@@ -60,9 +61,9 @@ void main() {
       final createdAt = amplify_core.TemporalDateTime.now();
       final lastModified = amplify_core.TemporalDateTime.now();
 
-      final document = Document(
-        id: 'doc-1',
-        userId: 'test-user',
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'test-user',
         title: 'Test Doc',
         category: 'Mortgage',
         filePaths: [],
@@ -99,7 +100,7 @@ void main() {
 
       final document = DocumentExtensions.fromMap(map);
 
-      expect(document.id, 'doc-1');
+      expect(document.syncId, 'doc-1');
       expect(document.title, 'Holiday Booking');
       expect(document.category, 'Holiday');
       expect(document.filePaths, ['/path/to/file.pdf']);
@@ -137,7 +138,8 @@ void main() {
       final createdAt = amplify_core.TemporalDateTime.now();
       final lastModified = amplify_core.TemporalDateTime.now();
 
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'user123',
         title: 'Test Insurance',
         category: 'Home Insurance',
@@ -157,7 +159,8 @@ void main() {
     });
 
     test('Document should have default cloud sync values', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -180,9 +183,9 @@ void main() {
           amplify_core.TemporalDateTime(DateTime(2025, 6, 15, 10, 30));
       final createdAt = amplify_core.TemporalDateTime.now();
 
-      final document = Document(
-        id: 'doc-1',
-        userId: 'user456',
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'user456',
         title: 'Test Doc',
         category: 'Mortgage',
         filePaths: [],
@@ -250,7 +253,8 @@ void main() {
     test('Document copyWith should increase version and update lastModified',
         () {
       final originalTime = amplify_core.TemporalDateTime(DateTime(2025, 1, 1));
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -277,7 +281,8 @@ void main() {
     });
 
     test('Document copyWith should work multiple times', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -298,7 +303,8 @@ void main() {
     });
 
     test('Document copyWith should update cloud sync fields', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'user1',
         title: 'Test Doc',
         category: 'Other',
@@ -326,7 +332,8 @@ void main() {
 
   group('SyncState Transitions Tests', () {
     test('Document should transition from notSynced to pending', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -344,7 +351,8 @@ void main() {
     });
 
     test('Document should transition from pending to syncing', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -361,7 +369,8 @@ void main() {
     });
 
     test('Document should transition from syncing to synced', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -378,7 +387,8 @@ void main() {
     });
 
     test('Document should transition to conflict state', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -399,7 +409,8 @@ void main() {
     });
 
     test('Document should transition to error state', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',
@@ -416,7 +427,8 @@ void main() {
     });
 
     test('Document should transition from error back to pending', () {
-      final document = Document(
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: 'test-user',
         title: 'Test Doc',
         category: 'Other',

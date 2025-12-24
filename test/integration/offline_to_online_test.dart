@@ -42,7 +42,7 @@ void main() {
 
           // Queue document upload
           await queueService.queueOperation(
-            documentId: document.id.toString(),
+            documentId: document.syncId.toString(),
             type: QueuedOperationType.upload,
             operationData: {'document': document.toJson()},
             priority: priority,
@@ -51,11 +51,11 @@ void main() {
           // Queue file upload for some documents
           if (i % 2 == 0) {
             await queueService.queueOperation(
-              documentId: document.id.toString(),
+              documentId: document.syncId.toString(),
               type: QueuedOperationType.fileUpload,
               operationData: {
-                'filePath': '/test/file_${document.id}.pdf',
-                'documentId': document.id.toString(),
+                'filePath': '/test/file_${document.syncId}.pdf',
+                'documentId': document.syncId.toString(),
               },
               priority: priority,
             );
@@ -103,21 +103,22 @@ void main() {
 
       test('should handle queue persistence across service restarts', () async {
         // Queue operations
-        final document = TestHelpers.createRandomDocument(userId: 'test_user');
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: 'test_user');
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.upload,
           operationData: {'document': document.toJson()},
           priority: 1,
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.fileUpload,
           operationData: {
             'filePath': '/test/persistent_file.pdf',
-            'documentId': document.id.toString(),
+            'documentId': document.syncId.toString(),
           },
           priority: 2,
         );
@@ -140,7 +141,7 @@ void main() {
 
         // Verify operation details were preserved
         final restoredOperations =
-            newQueueService.getOperationsForDocument(document.id.toString());
+            newQueueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
         expect(restoredOperations.length, equals(2));
 
         final operationTypes = restoredOperations.map((op) => op.type).toSet();
@@ -166,17 +167,17 @@ void main() {
 
           if (i < 3) {
             priority = 2; // High priority
-            highPriorityOps.add(document.id.toString());
+            highPriorityOps.add(document.syncId.toString());
           } else if (i < 6) {
             priority = 1; // Medium priority
-            mediumPriorityOps.add(document.id.toString());
+            mediumPriorityOps.add(document.syncId.toString());
           } else {
             priority = 0; // Low priority
-            lowPriorityOps.add(document.id.toString());
+            lowPriorityOps.add(document.syncId.toString());
           }
 
           await queueService.queueOperation(
-            documentId: document.id.toString(),
+            documentId: document.syncId.toString(),
             type: QueuedOperationType.upload,
             operationData: {'document': document.toJson()},
             priority: priority,
@@ -205,7 +206,8 @@ void main() {
     group('Conflict Handling During Queue Processing', () {
       test('should detect and handle version conflicts during queue processing',
           () async {
-        final document = TestHelpers.createRandomDocument(
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
           userId: 'test_user',
           title: 'Original Document',
         );
@@ -219,7 +221,7 @@ void main() {
 
         // Queue the local document for update
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {'document': localDocument.toJson()},
           priority: 1,
@@ -227,7 +229,7 @@ void main() {
 
         // Verify operation was queued
         final queuedOperations =
-            queueService.getOperationsForDocument(document.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
         expect(queuedOperations.length, equals(1));
         expect(queuedOperations.first.type, equals(QueuedOperationType.update));
 
@@ -259,14 +261,15 @@ void main() {
         // Here we verify the queue preserves all necessary data for conflict detection
         expect(queuedDocument.version, isA<int>());
         expect(queuedDocument.lastModified, isNotNull);
-        expect(queuedDocument.id, isNotNull);
+        expect(queuedDocument.syncId, isNotNull);
 
         await subscription.cancel();
       });
 
       test('should preserve conflicting document versions for user resolution',
           () async {
-        final baseDocument = TestHelpers.createRandomDocument(
+        final baseDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
           userId: 'test_user',
           title: 'Base Document',
         );
@@ -286,14 +289,14 @@ void main() {
 
         // Queue both conflicting operations
         await queueService.queueOperation(
-          documentId: baseDocument.id.toString(),
+          documentId: baseDocument.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {'document': localVersion1.toJson()},
           priority: 1,
         );
 
         await queueService.queueOperation(
-          documentId: baseDocument.id.toString(),
+          documentId: baseDocument.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {'document': localVersion2.toJson()},
           priority: 1,
@@ -301,7 +304,7 @@ void main() {
 
         // Verify operations were queued (may be consolidated)
         final queuedOperations =
-            queueService.getOperationsForDocument(baseDocument.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), baseDocument.syncId.toString());
         expect(queuedOperations.isNotEmpty, isTrue);
 
         // Verify the queued operations preserve document data needed for conflict resolution
@@ -314,12 +317,12 @@ void main() {
           expect(document.lastModified, isNotNull);
           expect(document.title, isNotEmpty);
           expect(document.userId, equals('test_user'));
-          expect(document.id, equals(baseDocument.id));
+          expect(document.syncId, equals(baseDocument.syncId));
         }
 
         // Verify operation metadata is preserved
         for (final operation in queuedOperations) {
-          expect(operation.documentId, equals(baseDocument.id.toString()));
+          expect(operation.documentId, equals(baseDocument.syncId.toString()));
           expect(operation.queuedAt, isNotNull);
           expect(operation.type, equals(QueuedOperationType.update));
         }
@@ -342,7 +345,7 @@ void main() {
             );
 
             await queueService.queueOperation(
-              documentId: document.id.toString(),
+              documentId: document.syncId.toString(),
               type: QueuedOperationType.update,
               operationData: {'document': conflictingDoc.toJson()},
             );
@@ -355,7 +358,7 @@ void main() {
             );
 
             await queueService.queueOperation(
-              documentId: document.id.toString(),
+              documentId: document.syncId.toString(),
               type: QueuedOperationType.delete,
               operationData: {'document': deletedDoc.toJson()},
             );
@@ -363,7 +366,7 @@ void main() {
           // Scenario 3: New document upload
           else {
             await queueService.queueOperation(
-              documentId: document.id.toString(),
+              documentId: document.syncId.toString(),
               type: QueuedOperationType.upload,
               operationData: {'document': document.toJson()},
             );
@@ -383,7 +386,7 @@ void main() {
         for (int i = 0; i < documents.length; i++) {
           final document = documents[i];
           final operations =
-              queueService.getOperationsForDocument(document.id.toString());
+              queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
           expect(operations.length, equals(1));
 
           final operation = operations.first;
@@ -391,7 +394,7 @@ void main() {
               Document.fromJson(operation.operationData['document']);
 
           // All operations must preserve essential fields
-          expect(queuedDoc.id, equals(document.id));
+          expect(queuedDoc.id, equals(document.syncId));
           expect(queuedDoc.userId, equals('test_user'));
           expect(queuedDoc.version, isA<int>());
           expect(queuedDoc.lastModified, isNotNull);
@@ -403,11 +406,12 @@ void main() {
       test(
           'should consolidate multiple operations on the same document efficiently',
           () async {
-        final document = TestHelpers.createRandomDocument(userId: 'test_user');
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: 'test_user');
 
         // Queue multiple operations for the same document
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.upload,
           operationData: {
             'document': document.copyWith(title: 'Version 1').toJson()
@@ -415,7 +419,7 @@ void main() {
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {
             'document': document.copyWith(title: 'Version 2').toJson()
@@ -423,7 +427,7 @@ void main() {
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {
             'document': document.copyWith(title: 'Version 3').toJson()
@@ -432,7 +436,7 @@ void main() {
 
         // Verify consolidation occurred
         final operations =
-            queueService.getOperationsForDocument(document.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
         expect(
             operations.length, lessThanOrEqualTo(1)); // Should be consolidated
 
@@ -447,17 +451,18 @@ void main() {
 
       test('should handle delete operations that cancel previous operations',
           () async {
-        final document = TestHelpers.createRandomDocument(userId: 'test_user');
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: 'test_user');
 
         // Queue several operations
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.upload,
           operationData: {'document': document.toJson()},
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {
             'document': document.copyWith(title: 'Updated').toJson()
@@ -465,19 +470,19 @@ void main() {
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.fileUpload,
           operationData: {'filePath': '/test/file.pdf'},
         );
 
         // Verify operations were queued
         var operations =
-            queueService.getOperationsForDocument(document.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
         expect(operations.length, greaterThan(1));
 
         // Queue delete operation
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.delete,
           operationData: {'document': document.toJson()},
           priority: 10, // High priority
@@ -485,45 +490,46 @@ void main() {
 
         // Verify delete cancels previous operations
         operations =
-            queueService.getOperationsForDocument(document.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
         expect(operations.length, equals(1));
         expect(operations.first.type, equals(QueuedOperationType.delete));
       });
 
       test('should consolidate file operations of the same type', () async {
-        final document = TestHelpers.createRandomDocument(userId: 'test_user');
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: 'test_user');
 
         // Queue multiple file upload operations for the same document
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.fileUpload,
           operationData: {
             'filePath': '/test/file1.pdf',
-            'documentId': document.id.toString(),
+            'documentId': document.syncId.toString(),
           },
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.fileUpload,
           operationData: {
             'filePath': '/test/file2.pdf',
-            'documentId': document.id.toString(),
+            'documentId': document.syncId.toString(),
           },
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.fileUpload,
           operationData: {
             'filePath': '/test/file3.pdf',
-            'documentId': document.id.toString(),
+            'documentId': document.syncId.toString(),
           },
         );
 
         // Verify operations exist (consolidation behavior may vary for file operations)
         final operations =
-            queueService.getOperationsForDocument(document.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
         expect(operations.isNotEmpty, isTrue);
 
         // All remaining operations should be file uploads
@@ -547,7 +553,7 @@ void main() {
 
           // Queue document operation
           await queueService.queueOperation(
-            documentId: document.id.toString(),
+            documentId: document.syncId.toString(),
             type: i % 2 == 0
                 ? QueuedOperationType.upload
                 : QueuedOperationType.update,
@@ -558,11 +564,11 @@ void main() {
           // Queue file operation for some documents
           if (i % 3 == 0) {
             await queueService.queueOperation(
-              documentId: document.id.toString(),
+              documentId: document.syncId.toString(),
               type: QueuedOperationType.fileUpload,
               operationData: {
                 'filePath': '/test/file_$i.pdf',
-                'documentId': document.id.toString(),
+                'documentId': document.syncId.toString(),
               },
               priority: priority,
             );
@@ -591,11 +597,12 @@ void main() {
 
       test('should handle consolidation with different priority levels',
           () async {
-        final document = TestHelpers.createRandomDocument(userId: 'test_user');
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: 'test_user');
 
         // Queue operations with different priorities
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.upload,
           operationData: {
             'document': document.copyWith(title: 'Low Priority').toJson()
@@ -604,7 +611,7 @@ void main() {
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {
             'document': document.copyWith(title: 'High Priority').toJson()
@@ -613,7 +620,7 @@ void main() {
         );
 
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.update,
           operationData: {
             'document': document.copyWith(title: 'Medium Priority').toJson()
@@ -623,7 +630,7 @@ void main() {
 
         // Verify consolidation preserves highest priority
         final operations =
-            queueService.getOperationsForDocument(document.id.toString());
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
 
         if (operations.isNotEmpty) {
           // Should have consolidated to one operation with highest priority
@@ -652,7 +659,7 @@ void main() {
         // Queue operations
         for (final document in documents) {
           await queueService.queueOperation(
-            documentId: document.id.toString(),
+            documentId: document.syncId.toString(),
             type: QueuedOperationType.upload,
             operationData: {'document': document.toJson()},
           );
@@ -678,18 +685,19 @@ void main() {
         // Verify operations can still be retrieved
         for (final document in documents) {
           final operations =
-              queueService.getOperationsForDocument(document.id.toString());
+              queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId.toString());
           // Operations may have been processed or failed, but queue structure should be intact
           expect(operations, isA<List<QueuedSyncOperation>>());
         }
       });
 
       test('should recover from queue corruption', () async {
-        final document = TestHelpers.createRandomDocument(userId: 'test_user');
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: 'test_user');
 
         // Queue an operation
         await queueService.queueOperation(
-          documentId: document.id.toString(),
+          documentId: document.syncId.toString(),
           type: QueuedOperationType.upload,
           operationData: {'document': document.toJson()},
         );

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 // Test for operation consolidation functionality
 // This validates Requirements 10.3: "WHEN multiple operations are queued for the same document, THE system SHALL consolidate them efficiently"
 
@@ -11,7 +12,7 @@ class TestDocument {
   final int version;
   final DateTime lastModified;
 
-  TestDocument({
+  TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), {,
     required this.id,
     required this.userId,
     required this.title,
@@ -33,9 +34,9 @@ class TestDocument {
     String? title,
     int? version,
   }) {
-    return TestDocument(
-      id: id,
-      userId: userId,
+    return TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+            userId: userId,
       title: title ?? this.title,
       version: version ?? this.version,
       lastModified: DateTime.now(),
@@ -71,8 +72,7 @@ class TestConsolidationQueue {
     int priority = 0,
   }) {
     final operation = TestQueuedOperation(
-      id: '${type}_${documentId}_${DateTime.now().millisecondsSinceEpoch}',
-      documentId: documentId,
+            documentId: documentId,
       type: type,
       queuedAt: DateTime.now(),
       operationData: operationData,
@@ -82,7 +82,7 @@ class TestConsolidationQueue {
     _operations.add(operation);
   }
 
-  List<TestQueuedOperation> getOperationsForDocument(String documentId) {
+  List<TestQueuedOperation> getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), String documentId) {,
     return _operations.where((op) => op.documentId == documentId).toList();
   }
 
@@ -131,8 +131,7 @@ class TestConsolidationQueue {
             mergedData.addAll(op.operationData);
 
             consolidatedOp = TestQueuedOperation(
-              id: consolidatedOp.id,
-              documentId: consolidatedOp.documentId,
+                            documentId: consolidatedOp.documentId,
               type: consolidatedOp.type == 'upload' ? 'upload' : op.type,
               queuedAt: consolidatedOp.queuedAt,
               operationData: mergedData,
@@ -163,9 +162,9 @@ void main() {
   group('Operation Consolidation Tests', () {
     test('should consolidate multiple updates for same document', () {
       final queue = TestConsolidationQueue();
-      final document = TestDocument(
-        id: 'doc1',
-        userId: 'user1',
+      final document = TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'user1',
         title: 'Original Title',
         version: 1,
         lastModified: DateTime.now(),
@@ -206,16 +205,16 @@ void main() {
       expect(queue.totalOperations, equals(1));
 
       // Verify the consolidated operation has the latest data
-      final operations = queue.getOperationsForDocument('doc1');
+      final operations = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc1');
       expect(operations.length, equals(1));
       expect(operations.first.type, equals('update'));
     });
 
     test('should consolidate upload followed by updates', () {
       final queue = TestConsolidationQueue();
-      final document = TestDocument(
-        id: 'doc2',
-        userId: 'user1',
+      final document = TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'user1',
         title: 'Original Title',
         version: 1,
         lastModified: DateTime.now(),
@@ -246,16 +245,16 @@ void main() {
       expect(queue.totalOperations, equals(1));
 
       // Verify the consolidated operation is still an upload (initial creation)
-      final operations = queue.getOperationsForDocument('doc2');
+      final operations = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc2');
       expect(operations.length, equals(1));
       expect(operations.first.type, equals('upload'));
     });
 
     test('should handle delete operations canceling previous operations', () {
       final queue = TestConsolidationQueue();
-      final document = TestDocument(
-        id: 'doc3',
-        userId: 'user1',
+      final document = TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'user1',
         title: 'Original Title',
         version: 1,
         lastModified: DateTime.now(),
@@ -292,7 +291,7 @@ void main() {
       expect(queue.totalOperations, equals(1));
 
       // Verify only delete operation remains
-      final operations = queue.getOperationsForDocument('doc3');
+      final operations = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc3');
       expect(operations.length, equals(1));
       expect(operations.first.type, equals('delete'));
     });
@@ -335,8 +334,8 @@ void main() {
       expect(queue.totalOperations, equals(2));
 
       // Verify both documents have operations
-      expect(queue.getOperationsForDocument('doc1').length, equals(1));
-      expect(queue.getOperationsForDocument('doc2').length, equals(1));
+      expect(queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc1').length, equals(1));
+      expect(queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc2').length, equals(1));
     });
 
     test('should handle mixed operation types efficiently', () {
@@ -380,7 +379,7 @@ void main() {
       expect(consolidatedCount, equals(1)); // upload + update = 1 upload
       expect(queue.totalOperations, equals(3)); // 1 document op + 2 file ops
 
-      final operations = queue.getOperationsForDocument('doc4');
+      final operations = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc4');
       expect(operations.length, equals(3));
 
       // Should have 1 document operation and 2 file operations

@@ -43,7 +43,7 @@ void main() {
 
       for (int i = 0; i < iterations; i++) {
         // Generate a random base document
-        final baseDocument = _generateRandomDocument(faker, version: 1);
+        final baseDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
 
         // Create local version - modified after base
         final localVersion = baseDocument.copyWith(
@@ -88,7 +88,7 @@ void main() {
 
       for (int i = 0; i < iterations; i++) {
         // Generate a random document
-        final document = _generateRandomDocument(faker, version: i + 1);
+        final document = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: i + 1);
 
         // Create identical copy
         final identicalCopy = document.copyWith();
@@ -110,7 +110,7 @@ void main() {
 
       for (int i = 0; i < iterations; i++) {
         // Generate base document
-        final baseDocument = _generateRandomDocument(faker, version: 1);
+        final baseDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
 
         // Local is ahead in version
         final localVersion = baseDocument.copyWith(
@@ -155,7 +155,7 @@ void main() {
 
       // Generate and detect conflicts
       for (int i = 0; i < 10; i++) {
-        final baseDocument = _generateRandomDocument(faker, version: 1);
+        final baseDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
 
         final localVersion = baseDocument.copyWith(
           title: 'Local ${faker.lorem.word()}',
@@ -199,13 +199,13 @@ void main() {
     });
 
     test('detectConflict returns null for same version', () {
-      final doc = _generateRandomDocument(faker, version: 1);
+      final doc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final conflict = conflictService.detectConflict(doc, doc);
       expect(conflict, isNull);
     });
 
     test('detectConflict creates conflict for divergent versions', () {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
@@ -229,7 +229,7 @@ void main() {
     });
 
     test('getActiveConflicts returns detected conflicts', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(title: 'Local', version: 2);
       final remote = baseDoc.copyWith(
         title: 'Remote',
@@ -245,7 +245,7 @@ void main() {
     });
 
     test('mergeDocuments combines file paths from both versions', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(
         filePaths: ['/path/local1.pdf', '/path/local2.pdf'],
         version: 2,
@@ -263,7 +263,7 @@ void main() {
     });
 
     test('mergeDocuments uses most recent title', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final now = DateTime.utc(2023, 6, 15, 12, 0, 0);
       final local = baseDoc.copyWith(
         title: 'Local Title',
@@ -284,7 +284,7 @@ void main() {
     });
 
     test('mergeDocuments combines notes from both versions', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(
         notes: 'Local notes',
         version: 2,
@@ -302,7 +302,7 @@ void main() {
     });
 
     test('mergeDocuments increments version', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(version: 3);
       final remote = baseDoc.copyWith(version: 2);
 
@@ -312,7 +312,7 @@ void main() {
     });
 
     test('mergeDocuments sets sync state to pending', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(version: 2);
       final remote = baseDoc.copyWith(version: 2);
 
@@ -326,7 +326,7 @@ void main() {
     });
 
     test('resolveConflict with keepLocal strategy', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
@@ -360,7 +360,7 @@ void main() {
     });
 
     test('resolveConflict with keepRemote strategy', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(
         title: 'Local Title',
         version: 2,
@@ -392,7 +392,7 @@ void main() {
     });
 
     test('resolveConflict with merge strategy', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(
         title: 'Local Title',
         filePaths: ['/local/file.pdf'],
@@ -431,7 +431,7 @@ void main() {
     });
 
     test('resolveConflict removes conflict from active list', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(title: 'Local', version: 2);
       final remote = baseDoc.copyWith(
         title: 'Remote',
@@ -464,9 +464,9 @@ void main() {
 
     test('mergeDocuments handles null notes gracefully', () async {
       // Create a document without notes in the generator
-      final baseDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final baseDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -486,7 +486,7 @@ void main() {
     });
 
     test('mergeDocuments handles identical notes', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final local = baseDoc.copyWith(notes: 'Same notes', version: 2);
       final remote = baseDoc.copyWith(notes: 'Same notes', version: 2);
 
@@ -496,7 +496,7 @@ void main() {
     });
 
     test('mergeDocuments uses earlier createdAt date', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final earlierDate = DateTime.utc(2023, 1, 1);
       final laterDate = DateTime.utc(2023, 6, 1);
 
@@ -515,7 +515,7 @@ void main() {
     });
 
     test('mergeDocuments preserves userId', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final userId = faker.guid.guid();
       final local = baseDoc.copyWith(userId: userId, version: 2);
       final remote = baseDoc.copyWith(userId: userId, version: 2);
@@ -526,7 +526,7 @@ void main() {
     });
 
     test('mergeDocuments handles renewal date from either version', () async {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final renewalDate = DateTime.utc(2025, 12, 31);
 
       final local = baseDoc.copyWith(
@@ -542,7 +542,7 @@ void main() {
 
     test('detectConflict handles documents with different modification times',
         () {
-      final baseDoc = _generateRandomDocument(faker, version: 1);
+      final baseDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), faker, version: 1);
       final now = DateTime.utc(2023, 6, 15, 12, 0, 0);
 
       final doc1 = baseDoc.copyWith(
@@ -564,10 +564,10 @@ void main() {
 }
 
 /// Helper function to generate random documents for testing
-Document _generateRandomDocument(Faker faker, {int version = 1}) {
-  return Document(
-    id: faker.randomGenerator.integer(10000).toString(),
-    userId: faker.guid.guid(),
+Document _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), Faker faker, {int version = 1}) {,
+  return Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+        userId: faker.guid.guid(),
     title: faker.lorem.sentence(),
     category: faker.randomGenerator.element(
         ['Insurance', 'Warranty', 'Subscription', 'Contract', 'Other']),

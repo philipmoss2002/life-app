@@ -42,9 +42,9 @@ void main() {
       for (int i = 0; i < 100; i++) {
         // Generate random document with random sync state
         final randomState = faker.randomGenerator.element(SyncState.values);
-        final document = Document(
-          id: faker.randomGenerator.integer(100000).toString(),
-          userId: faker.guid.guid(),
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract', 'Other']),
@@ -108,9 +108,9 @@ void main() {
       for (final fromState in SyncState.values) {
         for (final toState in SyncState.values) {
           // Create document with initial state
-          final document = Document(
-            id: faker.randomGenerator.integer(100000).toString(),
-            userId: faker.guid.guid(),
+          final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: faker.guid.guid(),
             title: faker.lorem.sentence(),
             category: 'Insurance',
             filePaths: [],
@@ -169,9 +169,9 @@ void main() {
       // Generate 50 random documents with random sync states
       for (int i = 0; i < 50; i++) {
         final randomState = faker.randomGenerator.element(SyncState.values);
-        final document = Document(
-          id: faker.randomGenerator.integer(100000).toString(),
-          userId: faker.guid.guid(),
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
@@ -209,9 +209,9 @@ void main() {
           Duration(hours: faker.randomGenerator.integer(1000)),
         );
 
-        final document = Document(
-          id: faker.randomGenerator.integer(100000).toString(),
-          userId: faker.guid.guid(),
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: 'Insurance',
           filePaths: [],
@@ -273,9 +273,9 @@ void main() {
     /// and reported in the sync status
     test('Property 9: Error states are accurately represented', () {
       // Test error state representation
-      final errorDocument = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final errorDocument = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -288,9 +288,9 @@ void main() {
       expect(errorDocument.syncState, equals(SyncState.error.toJson()));
 
       // Test conflict state representation
-      final conflictDocument = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final conflictDocument = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
@@ -308,9 +308,9 @@ void main() {
     final faker = Faker();
 
     test('Document with synced state is correctly identified', () {
-      final document = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -324,9 +324,9 @@ void main() {
     });
 
     test('Document with pending state is correctly identified', () {
-      final document = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
@@ -340,9 +340,9 @@ void main() {
     });
 
     test('Document with syncing state is correctly identified', () {
-      final document = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Contract',
         filePaths: [],
@@ -356,9 +356,9 @@ void main() {
     });
 
     test('Document with error state is correctly identified', () {
-      final document = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -372,9 +372,9 @@ void main() {
     });
 
     test('Document with conflict state is correctly identified', () {
-      final document = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
@@ -388,9 +388,9 @@ void main() {
     });
 
     test('Document with notSynced state is correctly identified', () {
-      final document = Document(
-        id: faker.randomGenerator.integer(100000).toString(),
-        userId: faker.guid.guid(),
+      final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Other',
         filePaths: [],

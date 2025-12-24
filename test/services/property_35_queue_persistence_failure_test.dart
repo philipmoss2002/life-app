@@ -33,8 +33,7 @@ class TestQueuedOperation {
     int? priority,
   }) {
     return TestQueuedOperation(
-      id: id ?? this.id,
-      documentId: documentId ?? this.documentId,
+            documentId: documentId ?? this.documentId,
       type: type ?? this.type,
       queuedAt: queuedAt ?? this.queuedAt,
       retryCount: retryCount ?? this.retryCount,
@@ -57,8 +56,7 @@ class TestQueuedOperation {
 
   static TestQueuedOperation fromJson(Map<String, dynamic> json) {
     return TestQueuedOperation(
-      id: json['id'],
-      documentId: json['documentId'],
+            documentId: json['documentId'],
       type: json['type'],
       queuedAt: DateTime.parse(json['queuedAt']),
       retryCount: json['retryCount'] ?? 0,
@@ -81,8 +79,7 @@ class TestSyncQueue {
     int priority = 0,
   }) {
     final operation = TestQueuedOperation(
-      id: '${type}_${documentId}_${DateTime.now().millisecondsSinceEpoch}',
-      documentId: documentId,
+            documentId: documentId,
       type: type,
       queuedAt: DateTime.now(),
       operationData: operationData,
@@ -116,8 +113,7 @@ class TestSyncQueue {
     // Create backup before processing (simulating persistence)
     _backupQueue.clear();
     _backupQueue.addAll(_operations.map((op) => TestQueuedOperation(
-          id: op.id,
-          documentId: op.documentId,
+                    documentId: op.documentId,
           type: op.type,
           queuedAt: op.queuedAt,
           retryCount: op.retryCount,

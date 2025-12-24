@@ -29,8 +29,7 @@ void main() {
       final addedAt = amplify_core.TemporalDateTime(DateTime(2025, 1, 1));
 
       final attachment = FileAttachment(
-        id: 'attachment-1',
-        filePath: '/path/to/file.pdf',
+                filePath: '/path/to/file.pdf',
         fileName: 'insurance.pdf',
         label: 'Policy Document',
         fileSize: 1024000,
@@ -51,8 +50,7 @@ void main() {
 
     test('FileAttachment should convert to map correctly', () {
       final attachment = FileAttachment(
-        id: 'attachment-2',
-        filePath: '/path/to/file.pdf',
+                filePath: '/path/to/file.pdf',
         fileName: 'test.pdf',
         label: 'Test Label',
         fileSize: 2048,

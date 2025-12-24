@@ -330,6 +330,12 @@ class _SyncStatusDetailScreenState extends State<SyncStatusDetailScreen> {
           'label': 'Not Synced',
           'color': Colors.grey,
         };
+      case SyncState.pendingDeletion:
+        return {
+          'icon': Icons.delete_outline,
+          'label': 'Deleting',
+          'color': Colors.red,
+        };
     }
   }
 

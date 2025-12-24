@@ -26,13 +26,16 @@ import 'package:amplify_core/amplify_core.dart' as amplify_core;
 /** This is an auto generated class representing the FileAttachment type in your schema. */
 class FileAttachment extends amplify_core.Model {
   static const classType = const _FileAttachmentModelType();
-  final String id;
-  final String? _filePath;
+  final String? _syncId;
+  final String? _userId;
   final String? _fileName;
   final String? _label;
   final int? _fileSize;
   final String? _s3Key;
+  final String? _filePath;
   final amplify_core.TemporalDateTime? _addedAt;
+  final String? _contentType;
+  final String? _checksum;
   final String? _syncState;
   final Document? _document;
   final amplify_core.TemporalDateTime? _createdAt;
@@ -43,17 +46,39 @@ class FileAttachment extends amplify_core.Model {
   
   @Deprecated('[getId] is being deprecated in favor of custom primary key feature. Use getter [modelIdentifier] to get model identifier.')
   @override
-  String getId() => id;
+  String getId() => modelIdentifier.serializeAsString();
   
   FileAttachmentModelIdentifier get modelIdentifier {
+    try {
       return FileAttachmentModelIdentifier(
-        id: id
+        syncId: _syncId!
       );
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
   }
   
-  String get filePath {
+  String get syncId {
     try {
-      return _filePath!;
+      return _syncId!;
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
+  }
+  
+  String get userId {
+    try {
+      return _userId!;
     } catch(e) {
       throw amplify_core.AmplifyCodeGenModelException(
           amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
@@ -107,6 +132,19 @@ class FileAttachment extends amplify_core.Model {
     }
   }
   
+  String get filePath {
+    try {
+      return _filePath!;
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
+  }
+  
   amplify_core.TemporalDateTime get addedAt {
     try {
       return _addedAt!;
@@ -118,6 +156,14 @@ class FileAttachment extends amplify_core.Model {
           underlyingException: e.toString()
           );
     }
+  }
+  
+  String? get contentType {
+    return _contentType;
+  }
+  
+  String? get checksum {
+    return _checksum;
   }
   
   String get syncState {
@@ -145,17 +191,20 @@ class FileAttachment extends amplify_core.Model {
     return _updatedAt;
   }
   
-  const FileAttachment._internal({required this.id, required filePath, required fileName, label, required fileSize, required s3Key, required addedAt, required syncState, document, createdAt, updatedAt}): _filePath = filePath, _fileName = fileName, _label = label, _fileSize = fileSize, _s3Key = s3Key, _addedAt = addedAt, _syncState = syncState, _document = document, _createdAt = createdAt, _updatedAt = updatedAt;
+  const FileAttachment._internal({required syncId, required userId, required fileName, label, required fileSize, required s3Key, required filePath, required addedAt, contentType, checksum, required syncState, document, createdAt, updatedAt}): _syncId = syncId, _userId = userId, _fileName = fileName, _label = label, _fileSize = fileSize, _s3Key = s3Key, _filePath = filePath, _addedAt = addedAt, _contentType = contentType, _checksum = checksum, _syncState = syncState, _document = document, _createdAt = createdAt, _updatedAt = updatedAt;
   
-  factory FileAttachment({String? id, required String filePath, required String fileName, String? label, required int fileSize, required String s3Key, required amplify_core.TemporalDateTime addedAt, required String syncState, Document? document}) {
+  factory FileAttachment({required String syncId, required String userId, required String fileName, String? label, required int fileSize, required String s3Key, required String filePath, required amplify_core.TemporalDateTime addedAt, String? contentType, String? checksum, required String syncState, Document? document}) {
     return FileAttachment._internal(
-      id: id == null ? amplify_core.UUID.getUUID() : id,
-      filePath: filePath,
+      syncId: syncId,
+      userId: userId,
       fileName: fileName,
       label: label,
       fileSize: fileSize,
       s3Key: s3Key,
+      filePath: filePath,
       addedAt: addedAt,
+      contentType: contentType,
+      checksum: checksum,
       syncState: syncState,
       document: document);
   }
@@ -168,13 +217,16 @@ class FileAttachment extends amplify_core.Model {
   bool operator ==(Object other) {
     if (identical(other, this)) return true;
     return other is FileAttachment &&
-      id == other.id &&
-      _filePath == other._filePath &&
+      _syncId == other._syncId &&
+      _userId == other._userId &&
       _fileName == other._fileName &&
       _label == other._label &&
       _fileSize == other._fileSize &&
       _s3Key == other._s3Key &&
+      _filePath == other._filePath &&
       _addedAt == other._addedAt &&
+      _contentType == other._contentType &&
+      _checksum == other._checksum &&
       _syncState == other._syncState &&
       _document == other._document;
   }
@@ -187,13 +239,16 @@ class FileAttachment extends amplify_core.Model {
     var buffer = new StringBuffer();
     
     buffer.write("FileAttachment {");
-    buffer.write("id=" + "$id" + ", ");
-    buffer.write("filePath=" + "$_filePath" + ", ");
+    buffer.write("syncId=" + "$_syncId" + ", ");
+    buffer.write("userId=" + "$_userId" + ", ");
     buffer.write("fileName=" + "$_fileName" + ", ");
     buffer.write("label=" + "$_label" + ", ");
     buffer.write("fileSize=" + (_fileSize != null ? _fileSize!.toString() : "null") + ", ");
     buffer.write("s3Key=" + "$_s3Key" + ", ");
+    buffer.write("filePath=" + "$_filePath" + ", ");
     buffer.write("addedAt=" + (_addedAt != null ? _addedAt!.format() : "null") + ", ");
+    buffer.write("contentType=" + "$_contentType" + ", ");
+    buffer.write("checksum=" + "$_checksum" + ", ");
     buffer.write("syncState=" + "$_syncState" + ", ");
     buffer.write("document=" + (_document != null ? _document!.toString() : "null") + ", ");
     buffer.write("createdAt=" + (_createdAt != null ? _createdAt!.format() : "null") + ", ");
@@ -203,50 +258,62 @@ class FileAttachment extends amplify_core.Model {
     return buffer.toString();
   }
   
-  FileAttachment copyWith({String? filePath, String? fileName, String? label, int? fileSize, String? s3Key, amplify_core.TemporalDateTime? addedAt, String? syncState, Document? document}) {
+  FileAttachment copyWith({String? userId, String? fileName, String? label, int? fileSize, String? s3Key, String? filePath, amplify_core.TemporalDateTime? addedAt, String? contentType, String? checksum, String? syncState, Document? document}) {
     return FileAttachment._internal(
-      id: id,
-      filePath: filePath ?? this.filePath,
+      syncId: syncId,
+      userId: userId ?? this.userId,
       fileName: fileName ?? this.fileName,
       label: label ?? this.label,
       fileSize: fileSize ?? this.fileSize,
       s3Key: s3Key ?? this.s3Key,
+      filePath: filePath ?? this.filePath,
       addedAt: addedAt ?? this.addedAt,
+      contentType: contentType ?? this.contentType,
+      checksum: checksum ?? this.checksum,
       syncState: syncState ?? this.syncState,
       document: document ?? this.document);
   }
   
   FileAttachment copyWithModelFieldValues({
-    ModelFieldValue<String>? filePath,
+    ModelFieldValue<String>? userId,
     ModelFieldValue<String>? fileName,
     ModelFieldValue<String?>? label,
     ModelFieldValue<int>? fileSize,
     ModelFieldValue<String>? s3Key,
+    ModelFieldValue<String>? filePath,
     ModelFieldValue<amplify_core.TemporalDateTime>? addedAt,
+    ModelFieldValue<String?>? contentType,
+    ModelFieldValue<String?>? checksum,
     ModelFieldValue<String>? syncState,
     ModelFieldValue<Document?>? document
   }) {
     return FileAttachment._internal(
-      id: id,
-      filePath: filePath == null ? this.filePath : filePath.value,
+      syncId: syncId,
+      userId: userId == null ? this.userId : userId.value,
       fileName: fileName == null ? this.fileName : fileName.value,
       label: label == null ? this.label : label.value,
       fileSize: fileSize == null ? this.fileSize : fileSize.value,
       s3Key: s3Key == null ? this.s3Key : s3Key.value,
+      filePath: filePath == null ? this.filePath : filePath.value,
       addedAt: addedAt == null ? this.addedAt : addedAt.value,
+      contentType: contentType == null ? this.contentType : contentType.value,
+      checksum: checksum == null ? this.checksum : checksum.value,
       syncState: syncState == null ? this.syncState : syncState.value,
       document: document == null ? this.document : document.value
     );
   }
   
   FileAttachment.fromJson(Map<String, dynamic> json)  
-    : id = json['id'],
-      _filePath = json['filePath'],
+    : _syncId = json['syncId'],
+      _userId = json['userId'],
       _fileName = json['fileName'],
       _label = json['label'],
       _fileSize = (json['fileSize'] as num?)?.toInt(),
       _s3Key = json['s3Key'],
+      _filePath = json['filePath'],
       _addedAt = json['addedAt'] != null ? amplify_core.TemporalDateTime.fromString(json['addedAt']) : null,
+      _contentType = json['contentType'],
+      _checksum = json['checksum'],
       _syncState = json['syncState'],
       _document = json['document'] != null
         ? json['document']['serializedData'] != null
@@ -257,17 +324,20 @@ class FileAttachment extends amplify_core.Model {
       _updatedAt = json['updatedAt'] != null ? amplify_core.TemporalDateTime.fromString(json['updatedAt']) : null;
   
   Map<String, dynamic> toJson() => {
-    'id': id, 'filePath': _filePath, 'fileName': _fileName, 'label': _label, 'fileSize': _fileSize, 's3Key': _s3Key, 'addedAt': _addedAt?.format(), 'syncState': _syncState, 'document': _document?.toJson(), 'createdAt': _createdAt?.format(), 'updatedAt': _updatedAt?.format()
+    'syncId': _syncId, 'userId': _userId, 'fileName': _fileName, 'label': _label, 'fileSize': _fileSize, 's3Key': _s3Key, 'filePath': _filePath, 'addedAt': _addedAt?.format(), 'contentType': _contentType, 'checksum': _checksum, 'syncState': _syncState, 'document': _document?.toJson(), 'createdAt': _createdAt?.format(), 'updatedAt': _updatedAt?.format()
   };
   
   Map<String, Object?> toMap() => {
-    'id': id,
-    'filePath': _filePath,
+    'syncId': _syncId,
+    'userId': _userId,
     'fileName': _fileName,
     'label': _label,
     'fileSize': _fileSize,
     's3Key': _s3Key,
+    'filePath': _filePath,
     'addedAt': _addedAt,
+    'contentType': _contentType,
+    'checksum': _checksum,
     'syncState': _syncState,
     'document': _document,
     'createdAt': _createdAt,
@@ -275,13 +345,16 @@ class FileAttachment extends amplify_core.Model {
   };
 
   static final amplify_core.QueryModelIdentifier<FileAttachmentModelIdentifier> MODEL_IDENTIFIER = amplify_core.QueryModelIdentifier<FileAttachmentModelIdentifier>();
-  static final ID = amplify_core.QueryField(fieldName: "id");
-  static final FILEPATH = amplify_core.QueryField(fieldName: "filePath");
+  static final SYNCID = amplify_core.QueryField(fieldName: "syncId");
+  static final USERID = amplify_core.QueryField(fieldName: "userId");
   static final FILENAME = amplify_core.QueryField(fieldName: "fileName");
   static final LABEL = amplify_core.QueryField(fieldName: "label");
   static final FILESIZE = amplify_core.QueryField(fieldName: "fileSize");
   static final S3KEY = amplify_core.QueryField(fieldName: "s3Key");
+  static final FILEPATH = amplify_core.QueryField(fieldName: "filePath");
   static final ADDEDAT = amplify_core.QueryField(fieldName: "addedAt");
+  static final CONTENTTYPE = amplify_core.QueryField(fieldName: "contentType");
+  static final CHECKSUM = amplify_core.QueryField(fieldName: "checksum");
   static final SYNCSTATE = amplify_core.QueryField(fieldName: "syncState");
   static final DOCUMENT = amplify_core.QueryField(
     fieldName: "document",
@@ -293,8 +366,8 @@ class FileAttachment extends amplify_core.Model {
     modelSchemaDefinition.authRules = [
       amplify_core.AuthRule(
         authStrategy: amplify_core.AuthStrategy.OWNER,
-        ownerField: "owner",
-        identityClaim: "cognito:username",
+        ownerField: "userId",
+        identityClaim: "sub",
         provider: amplify_core.AuthRuleProvider.USERPOOLS,
         operations: const [
           amplify_core.ModelOperation.CREATE,
@@ -305,13 +378,19 @@ class FileAttachment extends amplify_core.Model {
     ];
     
     modelSchemaDefinition.indexes = [
-      amplify_core.ModelIndex(fields: const ["documentId", "addedAt"], name: "byDocumentId")
+      amplify_core.ModelIndex(fields: const ["syncId"], name: null),
+      amplify_core.ModelIndex(fields: const ["documentSyncId", "addedAt"], name: "byDocumentSyncId"),
+      amplify_core.ModelIndex(fields: const ["userId", "addedAt"], name: "byUserId")
     ];
     
-    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.id());
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: FileAttachment.SYNCID,
+      isRequired: true,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
     
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
-      key: FileAttachment.FILEPATH,
+      key: FileAttachment.USERID,
       isRequired: true,
       ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
     ));
@@ -341,9 +420,27 @@ class FileAttachment extends amplify_core.Model {
     ));
     
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: FileAttachment.FILEPATH,
+      isRequired: true,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
+    
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
       key: FileAttachment.ADDEDAT,
       isRequired: true,
       ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.dateTime)
+    ));
+    
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: FileAttachment.CONTENTTYPE,
+      isRequired: false,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
+    
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: FileAttachment.CHECKSUM,
+      isRequired: false,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
     ));
     
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
@@ -355,7 +452,7 @@ class FileAttachment extends amplify_core.Model {
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.belongsTo(
       key: FileAttachment.DOCUMENT,
       isRequired: false,
-      targetNames: ['documentId'],
+      targetNames: ['documentSyncId'],
       ofModelName: 'Document'
     ));
     
@@ -394,15 +491,15 @@ class _FileAttachmentModelType extends amplify_core.ModelType<FileAttachment> {
  * of [FileAttachment] in your schema.
  */
 class FileAttachmentModelIdentifier implements amplify_core.ModelIdentifier<FileAttachment> {
-  final String id;
+  final String syncId;
 
-  /** Create an instance of FileAttachmentModelIdentifier using [id] the primary key. */
+  /** Create an instance of FileAttachmentModelIdentifier using [syncId] the primary key. */
   const FileAttachmentModelIdentifier({
-    required this.id});
+    required this.syncId});
   
   @override
   Map<String, dynamic> serializeAsMap() => (<String, dynamic>{
-    'id': id
+    'syncId': syncId
   });
   
   @override
@@ -415,7 +512,7 @@ class FileAttachmentModelIdentifier implements amplify_core.ModelIdentifier<File
   String serializeAsString() => serializeAsMap().values.join('#');
   
   @override
-  String toString() => 'FileAttachmentModelIdentifier(id: $id)';
+  String toString() => 'FileAttachmentModelIdentifier(syncId: $syncId)';
   
   @override
   bool operator ==(Object other) {
@@ -424,10 +521,10 @@ class FileAttachmentModelIdentifier implements amplify_core.ModelIdentifier<File
     }
     
     return other is FileAttachmentModelIdentifier &&
-      id == other.id;
+      syncId == other.syncId;
   }
   
   @override
   int get hashCode =>
-    id.hashCode;
+    syncId.hashCode;
 }

@@ -318,7 +318,7 @@ class AccountDeletionService {
       // Delete associated files from S3
       // Implementation would use your DocumentSyncManager and FileSyncManager
     } catch (e) {
-      safePrint('Error deleting cloud document ${document.id}: $e');
+      safePrint('Error deleting cloud document ${document.syncId}: $e');
       rethrow;
     }
   }

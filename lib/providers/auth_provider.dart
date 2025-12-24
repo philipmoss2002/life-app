@@ -292,6 +292,11 @@ class AuthProvider extends ChangeNotifier {
 
         // Queue each document for sync
         for (final document in unsyncedDocuments) {
+          debugPrint('🔍 Auth provider queueing document:');
+          debugPrint('🔍   - ID: ${document.syncId}');
+          debugPrint('🔍   - Title: ${document.title}');
+          debugPrint('🔍   - Sync ID: ${document.syncId}');
+
           await CloudSyncService().queueDocumentSync(
             document,
             SyncOperationType.upload,

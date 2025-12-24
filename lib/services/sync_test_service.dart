@@ -79,7 +79,7 @@ class SyncTestService {
 
       final variables = {
         'input': {
-          'id': document.id,
+          'id': document.syncId,
           'userId': document.userId,
           'title': document.title,
           'category': document.category,

@@ -10,6 +10,8 @@ import '../models/sync_state.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
 import '../services/conflict_resolution_service.dart';
+import '../services/cloud_sync_service.dart';
+import '../services/sync_identifier_service.dart';
 import 'conflict_resolution_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
@@ -54,16 +56,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   }
 
   Future<void> _loadFileLabels() async {
-    if (currentDocument.id != null) {
-      final attachments = await DatabaseService.instance
-          .getFileAttachmentsWithLabels(int.parse(currentDocument.id));
-      setState(() {
-        fileLabels = {
-          for (var attachment in attachments)
-            attachment.filePath: attachment.label
-        };
-      });
-    }
+    final attachments = await DatabaseService.instance
+        .getFileAttachmentsWithLabelsBySyncId(currentDocument.syncId);
+    setState(() {
+      fileLabels = {
+        for (var attachment in attachments)
+          attachment.filePath: attachment.label
+      };
+    });
   }
 
   @override
@@ -156,40 +156,39 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       });
 
       // Update in database if document is saved
-      if (currentDocument.id != null) {
-        try {
-          final rowsAffected = await DatabaseService.instance.updateFileLabel(
-            int.parse(currentDocument.id),
-            filePath,
-            result.isEmpty ? null : result,
-          );
+      try {
+        final rowsAffected =
+            await DatabaseService.instance.updateFileLabelBySyncId(
+          currentDocument.syncId,
+          filePath,
+          result.isEmpty ? null : result,
+        );
 
-          if (rowsAffected == 0 && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Warning: Label may not have been saved'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          } else if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Label saved successfully'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 1),
-              ),
-            );
-          }
-        } catch (e) {
-          debugPrint('Error updating label: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to save label: $e'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
+        if (rowsAffected == 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Warning: Label may not have been saved'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Label saved successfully'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error updating label: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save label: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     }
@@ -210,7 +209,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   Future<void> _saveDocument() async {
     if (_formKey.currentState!.validate()) {
       final updatedDocument = Document(
-        id: widget.document.id,
+        syncId: SyncIdentifierService.generateValidated(),
         userId: widget.document.userId,
         title: _titleController.text,
         category: selectedCategory,
@@ -234,31 +233,31 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       // Remove files that are no longer in the list
       for (final oldFile in oldFiles) {
         if (!filePaths.contains(oldFile)) {
-          await db.removeFileFromDocument(
-              int.parse(currentDocument.id), oldFile);
+          await db.removeFileFromDocumentBySyncId(
+              currentDocument.syncId, oldFile);
         }
       }
 
       // Add new files and update labels for all files
       for (final newFile in filePaths) {
         if (!oldFiles.contains(newFile)) {
-          // Add new file with label
-          await db.addFileToDocument(
-              int.parse(currentDocument.id), newFile, fileLabels[newFile]);
+          // Add new file with label using syncId
+          await db.addFileToDocumentBySyncId(
+              currentDocument.syncId, newFile, fileLabels[newFile]);
         } else {
           // Update label for existing file
-          await db.updateFileLabel(
-              int.parse(currentDocument.id), newFile, fileLabels[newFile]);
+          await db.updateFileLabelBySyncId(
+              currentDocument.syncId, newFile, fileLabels[newFile]);
         }
       }
 
       // Cancel old notification and schedule new one if renewal date is set
       try {
         await NotificationService.instance
-            .cancelReminder(int.parse(currentDocument.id));
+            .cancelReminder(currentDocument.syncId);
         if (renewalDate != null) {
           await NotificationService.instance.scheduleRenewalReminder(
-            int.parse(currentDocument.id),
+            currentDocument.syncId,
             _titleController.text,
             renewalDate!,
           );
@@ -841,13 +840,13 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     final conflicts = await conflictService.getActiveConflicts();
 
     final conflict = conflicts.firstWhere(
-      (c) => c.documentId == currentDocument.id.toString(),
+      (c) => c.documentId == currentDocument.syncId.toString(),
       orElse: () {
         // If no conflict found in service, create a mock one for UI purposes
         // In real scenario, this should be fetched from the sync service
         return DocumentConflict(
-          id: 'temp_${currentDocument.id}',
-          documentId: currentDocument.id.toString(),
+          id: 'conflict_${DateTime.now().millisecondsSinceEpoch}',
+          documentId: currentDocument.syncId.toString(),
           localDocument: currentDocument,
           remoteDocument: currentDocument, // This should come from remote
           type: ConflictType.concurrentModification,
@@ -902,10 +901,27 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
-      await DatabaseService.instance
-          .deleteDocument(int.parse(currentDocument.id));
-      await NotificationService.instance
-          .cancelReminder(int.parse(currentDocument.id));
+      // Mark document as pending deletion instead of deleting immediately
+      final deletionPendingDocument = currentDocument.copyWith(
+        syncState: SyncState.pendingDeletion.toJson(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+      );
+
+      // Update document in local database with pending deletion state
+      await DatabaseService.instance.updateDocument(deletionPendingDocument);
+
+      // Cancel any scheduled reminders
+      await NotificationService.instance.cancelReminder(currentDocument.syncId);
+
+      // Queue document for deletion from remote storage
+      try {
+        await CloudSyncService().queueDocumentSync(
+            deletionPendingDocument, SyncOperationType.delete);
+      } catch (e) {
+        // Log error but don't prevent local deletion
+        debugPrint('Failed to queue document for remote deletion: $e');
+      }
+
       if (mounted) {
         Navigator.pop(context);
       }

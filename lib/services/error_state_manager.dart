@@ -2,6 +2,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 /// Information about a document in error state
 class DocumentError {
   final String documentId;
@@ -274,15 +275,15 @@ class ErrorStateManager {
   Document markDocumentSyncError(Document document, String errorMessage) {
     // Mark the document error in our manager
     markDocumentError(
-      document.id,
+      document.syncId,
       errorMessage,
-      retryCount: getRetryCount(document.id),
+      retryCount: getRetryCount(document.syncId),
     );
 
     // Return document with error sync state
     return document.copyWith(
       syncState: SyncState.error.toJson(),
-      lastModified: TemporalDateTime.now(),
+      lastModified: amplify_core.TemporalDateTime.now(),
     );
   }
 

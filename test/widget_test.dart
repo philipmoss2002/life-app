@@ -14,6 +14,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify that the home screen loads
-    expect(find.text('Household Documents'), findsOneWidget);
+    expect(find.text('Your Reminders'), findsOneWidget);
   });
 }

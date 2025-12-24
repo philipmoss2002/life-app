@@ -17,6 +17,7 @@ import '../test_helpers.dart';
 /// setting and prevents sync operations when on cellular data.
 void main() {
   setUpAll(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
     setupTestDatabase();
   });
 
@@ -31,7 +32,7 @@ void main() {
     });
 
     tearDown(() async {
-      await syncService.dispose();
+      syncService.dispose();
     });
 
     /// Property 12: Wi-Fi Only Sync Compliance
@@ -60,9 +61,9 @@ void main() {
       await prefs.setBool('sync_wifi_only', true);
 
       // Create test document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: faker.randomGenerator
             .element(['Insurance', 'Warranty', 'Contract']),
@@ -117,9 +118,9 @@ void main() {
       await prefs.setBool('sync_paused', true);
 
       // Create test document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -149,9 +150,9 @@ void main() {
       // Generate multiple random documents
       final documents = List.generate(
         10,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000).toString(),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
@@ -182,9 +183,9 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('sync_wifi_only', true);
 
-      final uploadDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final uploadDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Upload Test',
         category: 'Insurance',
         filePaths: [],
@@ -194,9 +195,9 @@ void main() {
         version: 1,
       );
 
-      final updateDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final updateDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Update Test',
         category: 'Warranty',
         filePaths: [],
@@ -206,9 +207,9 @@ void main() {
         lastModified: amplify_core.TemporalDateTime.now(),
       );
 
-      final deleteDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final deleteDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Delete Test',
         category: 'Contract',
         filePaths: [],
@@ -267,7 +268,7 @@ void main() {
     });
 
     tearDown() async {
-      await syncService.dispose();
+      syncService.dispose();
     }
 
     test('Wi-Fi only setting defaults to false', () async {
@@ -333,9 +334,9 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('sync_paused', true);
 
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -384,7 +385,7 @@ void main() {
     });
 
     tearDown() async {
-      await syncService.dispose();
+      syncService.dispose();
     }
 
     /// Integration Test: Wi-Fi only mode with connectivity changes
@@ -406,9 +407,9 @@ void main() {
       // Queue multiple documents
       final documents = List.generate(
         5,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000).toString(),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: 'Document $index',
           category: 'Insurance',
           filePaths: [],
@@ -450,9 +451,9 @@ void main() {
       await prefs.setBool('sync_paused', false);
 
       // Queue document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
@@ -501,9 +502,9 @@ void main() {
       // Queue documents
       final documents = List.generate(
         10,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000).toString(),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: 'Document $index',
           category: 'Contract',
           filePaths: [],

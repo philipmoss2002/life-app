@@ -7,6 +7,7 @@ import '../services/subscription_service.dart' as sub;
 import '../services/authentication_service.dart';
 import '../services/database_service.dart';
 import '../services/sync_test_service.dart';
+import '../services/sync_identifier_service.dart';
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
@@ -338,6 +339,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
       // Create a test document
       final testDoc = Document(
+        syncId: SyncIdentifierService.generateValidated(),
         userId: user.id,
         title: 'Sync Test Document ${DateTime.now().millisecondsSinceEpoch}',
         category: 'Other',
@@ -356,7 +358,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
       // Create document with ID for sync
       final docWithId = Document(
-        id: docId.toString(),
+        syncId: SyncIdentifierService.generateValidated(),
         userId: testDoc.userId,
         title: testDoc.title,
         category: testDoc.category,
@@ -385,7 +387,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
         final updatedDocs = await DatabaseService.instance.getAllDocuments();
         final syncedDoc = updatedDocs.firstWhere(
-          (doc) => doc.id == docId.toString(),
+          (doc) => doc.syncId == docId.toString(),
           orElse: () => testDoc,
         );
 
@@ -457,7 +459,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
         if (user != null) {
           final testDoc = Document(
-            id: 'test-${DateTime.now().millisecondsSinceEpoch}',
+            syncId: SyncIdentifierService.generateValidated(),
             userId: user.id,
             title: 'Bypass Test Document',
             category: 'Other',
@@ -519,6 +521,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
       // Create document with file
       final testDocWithFile = Document(
+        syncId: SyncIdentifierService.generateValidated(),
         userId: userId,
         title: 'File Sync Test ${DateTime.now().millisecondsSinceEpoch}',
         category: 'Other',
@@ -538,7 +541,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
       // Create document with ID for sync
       final docWithFileAndId = Document(
-        id: docId.toString(),
+        syncId: SyncIdentifierService.generateValidated(),
         userId: testDocWithFile.userId,
         title: testDocWithFile.title,
         category: testDocWithFile.category,
@@ -567,7 +570,7 @@ class _DetailedSyncDebugScreenState extends State<DetailedSyncDebugScreen> {
 
         final updatedDocs = await DatabaseService.instance.getAllDocuments();
         final syncedDoc = updatedDocs.firstWhere(
-          (doc) => doc.id == docId.toString(),
+          (doc) => doc.syncId == docId.toString(),
           orElse: () => testDocWithFile,
         );
 

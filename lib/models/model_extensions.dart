@@ -1,6 +1,7 @@
 import 'Document.dart';
 import 'FileAttachment.dart';
 import 'sync_state.dart';
+import '../services/sync_identifier_service.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
 
 /// Extension methods to provide compatibility between old and new models
@@ -8,7 +9,7 @@ extension DocumentExtensions on Document {
   /// Create Document from Map (compatibility with old database code)
   static Document fromMap(Map<String, dynamic> map) {
     return Document(
-      id: map['id']?.toString(),
+      syncId: map['syncId'] ?? SyncIdentifierService.generateValidated(),
       userId: map['userId'] ?? 'unknown',
       title: map['title'] ?? '',
       category: map['category'] ?? '',
@@ -36,6 +37,7 @@ extension DocumentExtensions on Document {
   /// Convert Document to Map (compatibility with old database code)
   Map<String, dynamic> toMap() {
     return {
+      'syncId': syncId,
       'title': title,
       'category': category,
       'filePath': filePaths.isNotEmpty ? filePaths.first : null,
@@ -63,7 +65,8 @@ extension FileAttachmentExtensions on FileAttachment {
   /// Create FileAttachment from Map (compatibility with old database code)
   static FileAttachment fromMap(Map<String, dynamic> map) {
     return FileAttachment(
-      id: map['id']?.toString(),
+      syncId: map['syncId'],
+      userId: map['userId'] ?? '', // Add userId field
       filePath: map['filePath'] ?? '',
       fileName: map['fileName'] ?? '',
       label: map['label'],
@@ -73,13 +76,17 @@ extension FileAttachmentExtensions on FileAttachment {
           ? DateTime.parse(map['addedAt'])
           : DateTime.now()),
       syncState: map['syncState'] ?? SyncState.notSynced.toJson(),
+      contentType: map['contentType'],
+      checksum: map['checksum'],
     );
   }
 
   /// Convert FileAttachment to Map (compatibility with old database code)
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      'syncId': syncId,
+      'documentSyncId': null, // This will be set by the database layer
+      'userId': userId,
       'filePath': filePath,
       'fileName': fileName,
       'label': label,
@@ -87,6 +94,8 @@ extension FileAttachmentExtensions on FileAttachment {
       's3Key': s3Key,
       'addedAt': addedAt.getDateTimeInUtc().toIso8601String(),
       'syncState': syncState,
+      'contentType': contentType,
+      'checksum': checksum,
     };
   }
 

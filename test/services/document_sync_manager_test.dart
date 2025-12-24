@@ -6,6 +6,7 @@ import 'package:household_docs_app/models/sync_state.dart';
 import 'package:household_docs_app/services/document_sync_manager.dart';
 import 'package:household_docs_app/services/document_validation_service.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 void main() {
   group('DocumentSyncManager', () {
     late DocumentSyncManager syncManager;
@@ -29,19 +30,20 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Generate a random document
-          final originalDocument = _generateRandomDocument(faker);
+          final originalDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
           try {
             // Upload the document
-            await syncManager.uploadDocument(originalDocument);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), originalDocument);
 
             // Download the document to verify persistence
-            final downloadedDocument = await syncManager.downloadDocument(
-              originalDocument.id,
+            final downloadedDocument = await syncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+              originalDocument.syncId,
             );
 
             // Verify that the downloaded document matches the original
-            expect(downloadedDocument.id, equals(originalDocument.id));
+            expect(downloadedDocument.syncId, equals(originalDocument.syncId));
             expect(downloadedDocument.userId, equals(originalDocument.userId));
             expect(downloadedDocument.title, equals(originalDocument.title));
             expect(
@@ -86,29 +88,30 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Generate a random document
-          final originalDocument = _generateRandomDocument(faker);
+          final originalDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
           // Create an updated version with some changes
           final updatedDocument = originalDocument.copyWith(
             title: faker.lorem.sentence(),
             notes: faker.lorem.sentences(2).join(' '),
-            lastModified: TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
           );
 
           try {
             // First upload the original document
-            await syncManager.uploadDocument(originalDocument);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), originalDocument);
 
             // Then update it
-            await syncManager.updateDocument(updatedDocument);
+            await syncManager.updateDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), updatedDocument);
 
             // Download to verify the update
-            final downloadedDocument = await syncManager.downloadDocument(
-              originalDocument.id,
+            final downloadedDocument = await syncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+              originalDocument.syncId,
             );
 
             // Verify that the document was updated correctly
-            expect(downloadedDocument.id, equals(originalDocument.id));
+            expect(downloadedDocument.syncId, equals(originalDocument.syncId));
             expect(downloadedDocument.userId, equals(originalDocument.userId));
             expect(downloadedDocument.title, equals(updatedDocument.title));
             expect(downloadedDocument.notes, equals(updatedDocument.notes));
@@ -147,22 +150,23 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Generate a random document
-          final originalDocument = _generateRandomDocument(faker);
+          final originalDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
           try {
             // First upload the document
-            await syncManager.uploadDocument(originalDocument);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), originalDocument);
 
             // Then delete it (soft delete)
-            await syncManager.deleteDocument(originalDocument.id);
+            await syncManager.deleteDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), originalDocument.syncId);
 
             // Try to download to verify it's marked as deleted
-            final deletedDocument = await syncManager.downloadDocument(
-              originalDocument.id,
+            final deletedDocument = await syncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+              originalDocument.syncId,
             );
 
             // Verify that the document is marked as deleted
-            expect(deletedDocument.id, equals(originalDocument.id));
+            expect(deletedDocument.syncId, equals(originalDocument.syncId));
             expect(deletedDocument.userId, equals(originalDocument.userId));
             expect(deletedDocument.deleted, equals(true));
             expect(deletedDocument.deletedAt, isNotNull);
@@ -210,14 +214,14 @@ void main() {
           final user2Id = faker.guid.guid();
 
           final user1Document =
-              _generateRandomDocument(faker).copyWith(userId: user1Id);
+              _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker).copyWith(userId: user1Id);
           final user2Document =
-              _generateRandomDocument(faker).copyWith(userId: user2Id);
+              _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker).copyWith(userId: user2Id);
 
           try {
             // Upload documents for both users
-            await syncManager.uploadDocument(user1Document);
-            await syncManager.uploadDocument(user2Document);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), user1Document);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), user2Document);
 
             // Fetch documents for user1
             final user1Documents = await syncManager.fetchAllDocuments(user1Id);
@@ -273,7 +277,7 @@ void main() {
           final batchSize = faker.randomGenerator.integer(10, min: 2);
           final documents = List.generate(
             batchSize,
-            (_) => _generateRandomDocument(faker),
+            (_) => _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker),
           );
 
           try {
@@ -319,15 +323,14 @@ void main() {
           // Generate a mix of valid and invalid documents
           final validDocuments = List.generate(
             3,
-            (_) => _generateRandomDocument(faker),
+            (_) => _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker),
           );
 
           // Create some invalid documents (missing required fields)
           final invalidDocuments = List.generate(
             2,
-            (_) => _generateRandomDocument(faker)
-                .copyWith(userId: ''), // Invalid: empty userId
-          );
+            (_) => _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker),
+                .copyWith(userId: ''), // Inval          );
 
           final mixedBatch = [...validDocuments, ...invalidDocuments];
 
@@ -371,7 +374,7 @@ void main() {
           final batchSize = faker.randomGenerator.integer(8, min: 3);
           final documents = List.generate(
             batchSize,
-            (_) => _generateRandomDocument(faker),
+            (_) => _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker),
           );
 
           try {
@@ -416,7 +419,7 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Generate a valid document
-          final validDocument = _generateRandomDocument(faker);
+          final validDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
           // Test 1: Valid document should pass validation
           expect(
@@ -483,7 +486,7 @@ void main() {
 
           // Test 9: Document with renewal date in the past should fail validation
           final pastRenewalDoc = validDocument.copyWith(
-              renewalDate: TemporalDateTime.fromString(DateTime.now()
+              renewalDate: amplify_core.TemporalDateTime.fromString(DateTime.now()
                   .subtract(const Duration(days: 1))
                   .toUtc()
                   .toIso8601String()));
@@ -520,11 +523,11 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Test 1: Valid document data should pass validation
-          final validDocument = _generateRandomDocument(faker);
+          final validDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
           final validData = validDocument.toJson();
 
           expect(
-            () => validationService.validateDownloadedDocument(validData),
+            () => validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), validData),
             returnsNormally,
           );
 
@@ -532,7 +535,7 @@ void main() {
           final missingIdData = Map<String, dynamic>.from(validData);
           missingIdData.remove('id');
           expect(
-            () => validationService.validateDownloadedDocument(missingIdData),
+            () => validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), missingIdData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -541,7 +544,7 @@ void main() {
           missingUserIdData.remove('userId');
           expect(
             () =>
-                validationService.validateDownloadedDocument(missingUserIdData),
+                validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), missingUserIdData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -550,7 +553,7 @@ void main() {
           missingTitleData.remove('title');
           expect(
             () =>
-                validationService.validateDownloadedDocument(missingTitleData),
+                validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), missingTitleData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -559,7 +562,7 @@ void main() {
           wrongVersionTypeData['version'] = 'not_an_integer';
           expect(
             () => validationService
-                .validateDownloadedDocument(wrongVersionTypeData),
+                .validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), wrongVersionTypeData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -568,7 +571,7 @@ void main() {
           wrongFilePathsTypeData['filePaths'] = 'not_a_list';
           expect(
             () => validationService
-                .validateDownloadedDocument(wrongFilePathsTypeData),
+                .validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), wrongFilePathsTypeData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -577,7 +580,7 @@ void main() {
           wrongDeletedTypeData['deleted'] = 'not_a_boolean';
           expect(
             () => validationService
-                .validateDownloadedDocument(wrongDeletedTypeData),
+                .validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), wrongDeletedTypeData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -585,7 +588,7 @@ void main() {
           final invalidDateData = Map<String, dynamic>.from(validData);
           invalidDateData['createdAt'] = 'invalid_date_format';
           expect(
-            () => validationService.validateDownloadedDocument(invalidDateData),
+            () => validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), invalidDateData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -593,7 +596,7 @@ void main() {
           final nullTitleData = Map<String, dynamic>.from(validData);
           nullTitleData['title'] = null;
           expect(
-            () => validationService.validateDownloadedDocument(nullTitleData),
+            () => validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), nullTitleData),
             throwsA(isA<DocumentValidationException>()),
           );
 
@@ -601,7 +604,7 @@ void main() {
           final extraFieldsData = Map<String, dynamic>.from(validData);
           extraFieldsData['extraField'] = 'should_be_ignored';
           expect(
-            () => validationService.validateDownloadedDocument(extraFieldsData),
+            () => validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), extraFieldsData),
             returnsNormally,
           );
         }
@@ -620,27 +623,27 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Generate a random document
-          final document = _generateRandomDocument(faker);
+          final document = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
           try {
             // Test CREATE operation uses GraphQL mutation
-            await syncManager.uploadDocument(document);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), document);
             // If successful, it used the correct GraphQL createDocument mutation
 
             // Test READ operation uses GraphQL query
-            await syncManager.downloadDocument(document.id);
+            await syncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId);
             // If successful, it used the correct GraphQL getDocument query
 
             // Test UPDATE operation uses GraphQL mutation
             final updatedDocument = document.copyWith(
               title: faker.lorem.sentence(),
-              lastModified: TemporalDateTime.now(),
+              lastModified: amplify_core.TemporalDateTime.now(),
             );
-            await syncManager.updateDocument(updatedDocument);
+            await syncManager.updateDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), updatedDocument);
             // If successful, it used the correct GraphQL updateDocument mutation
 
             // Test DELETE operation uses GraphQL mutation (soft delete)
-            await syncManager.deleteDocument(document.id);
+            await syncManager.deleteDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), document.syncId);
             // If successful, it used the correct GraphQL updateDocument mutation for soft delete
 
             // Test LIST operation uses GraphQL query
@@ -682,15 +685,15 @@ void main() {
           final user2Id = faker.guid.guid();
 
           final user1Document =
-              _generateRandomDocument(faker).copyWith(userId: user1Id);
+              _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker).copyWith(userId: user1Id);
           final user2Document =
-              _generateRandomDocument(faker).copyWith(userId: user2Id);
+              _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker).copyWith(userId: user2Id);
 
           try {
             // Test that operations validate token before proceeding
             // This ensures authentication is enforced
-            await syncManager.uploadDocument(user1Document);
-            await syncManager.uploadDocument(user2Document);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), user1Document);
+            await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), user2Document);
 
             // Test that fetchAllDocuments filters by user
             final user1Documents = await syncManager.fetchAllDocuments(user1Id);
@@ -799,20 +802,21 @@ void main() {
           expect(sanitizedPath, isNot(contains('../')));
 
           // Test 9: Document sanitization preserves structure
-          final testDocument = _generateRandomDocument(faker).copyWith(
+          final testDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker).copyWith(,
             title: '<script>alert("title")</script>',
             notes: 'Hello & "World"',
           );
 
           final sanitizedDocument =
-              validationService.sanitizeDocument(testDocument);
+              validationService.sanitizeDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
           expect(sanitizedDocument.title, contains('&lt;script&gt;'));
           expect(sanitizedDocument.notes, contains('&amp;'));
           expect(sanitizedDocument.notes, contains('&quot;'));
 
           // Test 10: Null handling in document sanitization
-          final baseDocument = _generateRandomDocument(faker);
-          final nullNotesDocument = Document(
+          final baseDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
+          final nullNotesDocument = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
             userId: baseDocument.userId,
             title: baseDocument.title,
             category: baseDocument.category,
@@ -825,7 +829,7 @@ void main() {
             syncState: baseDocument.syncState,
           );
           final sanitizedNullDocument =
-              validationService.sanitizeDocument(nullNotesDocument);
+              validationService.sanitizeDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), nullNotesDocument);
           expect(sanitizedNullDocument.notes, isNull);
         }
       });
@@ -845,15 +849,13 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           // Test 1: Document with missing required fields should be rejected
-          final invalidDocument = Document(
-            userId: '', // Invalid: empty userId
-            title: '', // Invalid: empty title
-            category: '', // Invalid: empty category
-            filePaths: [],
+          final invalidDocument = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+            userId: '', // Inval            title: '', // Inval            category: '', // Inval            filePaths: [],
             renewalDate: null,
             notes: null,
-            createdAt: TemporalDateTime.now(),
-            lastModified: TemporalDateTime.now(),
+            createdAt: amplify_core.TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
             version: 1,
             syncState: 'pending',
           );
@@ -865,7 +867,7 @@ void main() {
           );
 
           // Test 2: Document with invalid category should be rejected
-          final validDocument = _generateRandomDocument(faker);
+          final validDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
           final invalidCategoryDoc =
               validDocument.copyWith(category: 'InvalidCategory');
 
@@ -899,7 +901,7 @@ void main() {
 
           // Test 5: Document with past renewal date should be rejected
           final pastRenewalDoc = validDocument.copyWith(
-              renewalDate: TemporalDateTime.fromString(DateTime.now()
+              renewalDate: amplify_core.TemporalDateTime.fromString(DateTime.now()
                   .subtract(const Duration(days: 1))
                   .toUtc()
                   .toIso8601String()));
@@ -919,7 +921,7 @@ void main() {
 
           expect(
             () => validationService
-                .validateDownloadedDocument(invalidDownloadData),
+                .validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), invalidDownloadData),
             throwsA(isA<DocumentValidationException>()),
             reason: 'Should reject downloaded data missing required fields',
           );
@@ -933,19 +935,19 @@ void main() {
             'version': 'not_an_integer', // Wrong type
             'filePaths': 'not_a_list', // Wrong type
             'deleted': 'not_a_boolean', // Wrong type
-            'createdAt': TemporalDateTime.now().format(),
-            'lastModified': TemporalDateTime.now().format(),
+            'createdAt': amplify_core.TemporalDateTime.now().format(),
+            'lastModified': amplify_core.TemporalDateTime.now().format(),
             'syncState': 'synced',
           };
 
           expect(
-            () => validationService.validateDownloadedDocument(wrongTypeData),
+            () => validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), wrongTypeData),
             throwsA(isA<DocumentValidationException>()),
             reason: 'Should reject downloaded data with wrong data types',
           );
 
           // Test 8: Valid document should pass validation (control test)
-          final validDoc = _generateRandomDocument(faker);
+          final validDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
           expect(
             () => validationService.validateDocumentForUpload(validDoc),
             returnsNormally,
@@ -956,7 +958,7 @@ void main() {
           final validDownloadData = validDoc.toJson();
           expect(
             () =>
-                validationService.validateDownloadedDocument(validDownloadData),
+                validationService.validateDownloadedDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), validDownloadData),
             returnsNormally,
             reason: 'Valid downloaded data should pass validation',
           );
@@ -966,12 +968,12 @@ void main() {
 
     group('CRUD Operations', () {
       test('uploadDocument should upload a document to DynamoDB', () async {
-        final document = _generateRandomDocument(faker);
+        final document = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
         // This will currently fail since DynamoDB is not set up
         // But it tests the interface
         try {
-          await syncManager.uploadDocument(document);
+          await syncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), document);
           // If we get here, upload succeeded
         } catch (e) {
           // Expected to fail without real DynamoDB
@@ -984,17 +986,17 @@ void main() {
         final documentId = faker.guid.guid();
 
         expect(
-          () => syncManager.downloadDocument(documentId),
+          () => syncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId),
           throwsException,
         );
       });
 
       test('updateDocument should detect version conflicts', () async {
-        final document = _generateRandomDocument(faker);
+        final document = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
         // Try to update a document that doesn't exist or has wrong version
         expect(
-          () => syncManager.updateDocument(document),
+          () => syncManager.updateDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), document),
           throwsException,
         );
       });
@@ -1004,7 +1006,7 @@ void main() {
 
         // This will fail since document doesn't exist
         expect(
-          () => syncManager.deleteDocument(documentId),
+          () => syncManager.deleteDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId),
           throwsException,
         );
       });
@@ -1024,12 +1026,12 @@ void main() {
       test(
           'updateDocument should throw VersionConflictException on version mismatch',
           () async {
-        final document = _generateRandomDocument(faker);
+        final document = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker);
 
         // This will fail since document doesn't exist
         // In a real scenario with mismatched versions, it should throw VersionConflictException
         expect(
-          () => syncManager.updateDocument(document),
+          () => syncManager.updateDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), document),
           throwsException,
         );
       });
@@ -1062,7 +1064,7 @@ void main() {
 }
 
 /// Generate a random document for testing
-Document _generateRandomDocument(Faker faker) {
+Document _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), Faker faker) {,
   final categories = [
     'Insurance',
     'Medical',
@@ -1075,7 +1077,8 @@ Document _generateRandomDocument(Faker faker) {
     'Other'
   ];
 
-  return Document(
+  return Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
     userId: faker.guid.guid(),
     title: () {
       final title = faker.lorem.sentence();
@@ -1087,7 +1090,7 @@ Document _generateRandomDocument(Faker faker) {
       (_) => faker.internet.httpsUrl(),
     ),
     renewalDate: faker.randomGenerator.boolean()
-        ? TemporalDateTime.fromString(DateTime.now()
+        ? amplify_core.TemporalDateTime.fromString(DateTime.now()
             .add(Duration(days: faker.randomGenerator.integer(365, min: 1)))
             .toUtc()
             .toIso8601String())
@@ -1098,11 +1101,11 @@ Document _generateRandomDocument(Faker faker) {
             return notes.length > 100 ? notes.substring(0, 100) : notes;
           }() // Keep notes short
         : null,
-    createdAt: TemporalDateTime.fromString(faker.date
+    createdAt: amplify_core.TemporalDateTime.fromString(faker.date
         .dateTime(minYear: 2023, maxYear: 2024)
         .toUtc()
         .toIso8601String()),
-    lastModified: TemporalDateTime.now(),
+    lastModified: amplify_core.TemporalDateTime.now(),
     version: faker.randomGenerator.integer(10, min: 1),
     syncState: SyncState.pending.toJson(),
   );

@@ -3,6 +3,7 @@ import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 import '../services/conflict_resolution_service.dart';
+import '../services/sync_identifier_service.dart';
 
 /// Screen for resolving synchronization conflicts
 class ConflictResolutionScreen extends StatefulWidget {
@@ -654,7 +655,7 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
 
     // Create merged document based on user selections
     final mergedDocument = Document(
-      id: local.id,
+      syncId: SyncIdentifierService.generateValidated(),
       userId: local.userId,
       title: _useLocalField['title']! ? local.title : remote.title,
       category: _useLocalField['category']! ? local.category : remote.category,

@@ -620,6 +620,12 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
           color: Colors.grey,
           size: 20,
         );
+      case SyncState.pendingDeletion:
+        return const Icon(
+          Icons.delete_outline,
+          color: Colors.red,
+          size: 20,
+        );
     }
   }
 
@@ -639,13 +645,13 @@ class _HomeScreenState extends State<HomeScreen> with SubscriptionStateMixin {
     final conflicts = await conflictService.getActiveConflicts();
 
     final conflict = conflicts.firstWhere(
-      (c) => c.documentId == doc.id.toString(),
+      (c) => c.documentId == doc.syncId.toString(),
       orElse: () {
         // If no conflict found in service, create a mock one for UI purposes
         // In real scenario, this should be fetched from the sync service
         return DocumentConflict(
-          id: 'temp_${doc.id}',
-          documentId: doc.id.toString(),
+          id: 'conflict_${DateTime.now().millisecondsSinceEpoch}',
+          documentId: doc.syncId.toString(),
           localDocument: doc,
           remoteDocument: doc, // This should come from remote
           type: ConflictType.concurrentModification,

@@ -96,7 +96,8 @@ void main() {
         () async {
       // Generate test data
       final userId = faker.guid.guid();
-      final testDocument = TestHelpers.createRandomDocument(
+      final testDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Real-time Test Document',
         category: 'Insurance',
@@ -114,10 +115,10 @@ void main() {
         });
 
         // Step 3: Create document locally
-        await databaseService.createDocument(testDocument);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
 
         // Step 4: Upload document (simulates remote creation)
-        await documentSyncManager.uploadDocument(testDocument);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
 
         // Step 5: Simulate receiving real-time notification
         // In a real implementation, this would come from GraphQL subscription
@@ -127,7 +128,7 @@ void main() {
         // Step 6: Verify local database is updated
         final allDocuments = await databaseService.getAllDocuments();
         final updatedDocument = allDocuments.firstWhere(
-          (doc) => doc.id == testDocument.id,
+          (doc) => doc.syncId == testDocument.syncId,
           orElse: () => throw Exception('Document not found'),
         );
         expect(updatedDocument, isNotNull,
@@ -166,7 +167,8 @@ void main() {
         () async {
       // Generate test data for conflict scenario
       final userId = faker.guid.guid();
-      final baseDocument = TestHelpers.createRandomDocument(
+      final baseDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Conflict Test Document',
         category: 'Medical',
@@ -199,7 +201,7 @@ void main() {
         });
 
         // Step 3: Create local document
-        await databaseService.createDocument(localDocument);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), localDocument);
 
         // Step 4: Simulate conflict detection during real-time update
         await _simulateConflictDetection(
@@ -216,7 +218,7 @@ void main() {
 
         // Step 6: Test conflict resolution workflow
         await conflictService.resolveConflict(
-          localDocument.id!,
+          localDocument.syncId!,
           ConflictResolutionStrategy.keepLocal,
         );
 
@@ -248,7 +250,8 @@ void main() {
         () async {
       // Generate test data
       final userId = faker.guid.guid();
-      final testDocument = TestHelpers.createRandomDocument(
+      final testDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Background Notification Test',
         category: 'Financial',
@@ -359,13 +362,15 @@ void main() {
       final user1Id = faker.guid.guid();
       final user2Id = faker.guid.guid();
 
-      final user1Document = TestHelpers.createRandomDocument(
+      final user1Document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: user1Id,
         title: 'User 1 Document',
         category: 'Insurance',
       );
 
-      final user2Document = TestHelpers.createRandomDocument(
+      final user2Document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: user2Id,
         title: 'User 2 Document',
         category: 'Medical',
@@ -437,7 +442,8 @@ void main() {
       final updateCount = 50;
       final testDocuments = List.generate(
         updateCount,
-        (index) => TestHelpers.createRandomDocument(
+        (index) => TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
           userId: userId,
           title: 'Performance Test Document $index',
           category: 'Insurance',

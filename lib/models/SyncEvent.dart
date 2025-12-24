@@ -27,6 +27,7 @@ import 'package:amplify_core/amplify_core.dart' as amplify_core;
 class SyncEvent extends amplify_core.Model {
   static const classType = const _SyncEventModelType();
   final String id;
+  final String? _userId;
   final String? _eventType;
   final String? _entityType;
   final String? _entityId;
@@ -47,6 +48,19 @@ class SyncEvent extends amplify_core.Model {
       return SyncEventModelIdentifier(
         id: id
       );
+  }
+  
+  String get userId {
+    try {
+      return _userId!;
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
   }
   
   String get eventType {
@@ -117,11 +131,12 @@ class SyncEvent extends amplify_core.Model {
     return _updatedAt;
   }
   
-  const SyncEvent._internal({required this.id, required eventType, required entityType, required entityId, message, required timestamp, deviceId, createdAt, updatedAt}): _eventType = eventType, _entityType = entityType, _entityId = entityId, _message = message, _timestamp = timestamp, _deviceId = deviceId, _createdAt = createdAt, _updatedAt = updatedAt;
+  const SyncEvent._internal({required this.id, required userId, required eventType, required entityType, required entityId, message, required timestamp, deviceId, createdAt, updatedAt}): _userId = userId, _eventType = eventType, _entityType = entityType, _entityId = entityId, _message = message, _timestamp = timestamp, _deviceId = deviceId, _createdAt = createdAt, _updatedAt = updatedAt;
   
-  factory SyncEvent({String? id, required String eventType, required String entityType, required String entityId, String? message, required amplify_core.TemporalDateTime timestamp, String? deviceId}) {
+  factory SyncEvent({String? id, required String userId, required String eventType, required String entityType, required String entityId, String? message, required amplify_core.TemporalDateTime timestamp, String? deviceId}) {
     return SyncEvent._internal(
       id: id == null ? amplify_core.UUID.getUUID() : id,
+      userId: userId,
       eventType: eventType,
       entityType: entityType,
       entityId: entityId,
@@ -139,6 +154,7 @@ class SyncEvent extends amplify_core.Model {
     if (identical(other, this)) return true;
     return other is SyncEvent &&
       id == other.id &&
+      _userId == other._userId &&
       _eventType == other._eventType &&
       _entityType == other._entityType &&
       _entityId == other._entityId &&
@@ -156,6 +172,7 @@ class SyncEvent extends amplify_core.Model {
     
     buffer.write("SyncEvent {");
     buffer.write("id=" + "$id" + ", ");
+    buffer.write("userId=" + "$_userId" + ", ");
     buffer.write("eventType=" + "$_eventType" + ", ");
     buffer.write("entityType=" + "$_entityType" + ", ");
     buffer.write("entityId=" + "$_entityId" + ", ");
@@ -169,9 +186,10 @@ class SyncEvent extends amplify_core.Model {
     return buffer.toString();
   }
   
-  SyncEvent copyWith({String? eventType, String? entityType, String? entityId, String? message, amplify_core.TemporalDateTime? timestamp, String? deviceId}) {
+  SyncEvent copyWith({String? userId, String? eventType, String? entityType, String? entityId, String? message, amplify_core.TemporalDateTime? timestamp, String? deviceId}) {
     return SyncEvent._internal(
       id: id,
+      userId: userId ?? this.userId,
       eventType: eventType ?? this.eventType,
       entityType: entityType ?? this.entityType,
       entityId: entityId ?? this.entityId,
@@ -181,6 +199,7 @@ class SyncEvent extends amplify_core.Model {
   }
   
   SyncEvent copyWithModelFieldValues({
+    ModelFieldValue<String>? userId,
     ModelFieldValue<String>? eventType,
     ModelFieldValue<String>? entityType,
     ModelFieldValue<String>? entityId,
@@ -190,6 +209,7 @@ class SyncEvent extends amplify_core.Model {
   }) {
     return SyncEvent._internal(
       id: id,
+      userId: userId == null ? this.userId : userId.value,
       eventType: eventType == null ? this.eventType : eventType.value,
       entityType: entityType == null ? this.entityType : entityType.value,
       entityId: entityId == null ? this.entityId : entityId.value,
@@ -201,6 +221,7 @@ class SyncEvent extends amplify_core.Model {
   
   SyncEvent.fromJson(Map<String, dynamic> json)  
     : id = json['id'],
+      _userId = json['userId'],
       _eventType = json['eventType'],
       _entityType = json['entityType'],
       _entityId = json['entityId'],
@@ -211,11 +232,12 @@ class SyncEvent extends amplify_core.Model {
       _updatedAt = json['updatedAt'] != null ? amplify_core.TemporalDateTime.fromString(json['updatedAt']) : null;
   
   Map<String, dynamic> toJson() => {
-    'id': id, 'eventType': _eventType, 'entityType': _entityType, 'entityId': _entityId, 'message': _message, 'timestamp': _timestamp?.format(), 'deviceId': _deviceId, 'createdAt': _createdAt?.format(), 'updatedAt': _updatedAt?.format()
+    'id': id, 'userId': _userId, 'eventType': _eventType, 'entityType': _entityType, 'entityId': _entityId, 'message': _message, 'timestamp': _timestamp?.format(), 'deviceId': _deviceId, 'createdAt': _createdAt?.format(), 'updatedAt': _updatedAt?.format()
   };
   
   Map<String, Object?> toMap() => {
     'id': id,
+    'userId': _userId,
     'eventType': _eventType,
     'entityType': _entityType,
     'entityId': _entityId,
@@ -228,6 +250,7 @@ class SyncEvent extends amplify_core.Model {
 
   static final amplify_core.QueryModelIdentifier<SyncEventModelIdentifier> MODEL_IDENTIFIER = amplify_core.QueryModelIdentifier<SyncEventModelIdentifier>();
   static final ID = amplify_core.QueryField(fieldName: "id");
+  static final USERID = amplify_core.QueryField(fieldName: "userId");
   static final EVENTTYPE = amplify_core.QueryField(fieldName: "eventType");
   static final ENTITYTYPE = amplify_core.QueryField(fieldName: "entityType");
   static final ENTITYID = amplify_core.QueryField(fieldName: "entityId");
@@ -241,8 +264,8 @@ class SyncEvent extends amplify_core.Model {
     modelSchemaDefinition.authRules = [
       amplify_core.AuthRule(
         authStrategy: amplify_core.AuthStrategy.OWNER,
-        ownerField: "owner",
-        identityClaim: "cognito:username",
+        ownerField: "userId",
+        identityClaim: "sub",
         provider: amplify_core.AuthRuleProvider.USERPOOLS,
         operations: const [
           amplify_core.ModelOperation.CREATE,
@@ -252,7 +275,17 @@ class SyncEvent extends amplify_core.Model {
         ])
     ];
     
+    modelSchemaDefinition.indexes = [
+      amplify_core.ModelIndex(fields: const ["userId"], name: "byUserId")
+    ];
+    
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.id());
+    
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: SyncEvent.USERID,
+      isRequired: true,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
     
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
       key: SyncEvent.EVENTTYPE,

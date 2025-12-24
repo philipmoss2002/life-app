@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/authentication_service.dart';
 import '../services/database_service.dart';
+import '../services/sync_identifier_service.dart';
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
@@ -154,6 +154,7 @@ class _ErrorTraceScreenState extends State<ErrorTraceScreen> {
     final testFilePath = '${tempDir.path}/error_trace_test.txt';
 
     final testDoc = Document(
+      syncId: SyncIdentifierService.generateValidated(),
       userId: user.id,
       title: 'Error Trace Test ${DateTime.now().millisecondsSinceEpoch}',
       category: 'Other',
@@ -168,7 +169,7 @@ class _ErrorTraceScreenState extends State<ErrorTraceScreen> {
     _log('✅ Document created in database with ID: $docId');
 
     final docWithId = Document(
-      id: docId.toString(),
+      syncId: testDoc.syncId,
       userId: testDoc.userId,
       title: testDoc.title,
       category: testDoc.category,

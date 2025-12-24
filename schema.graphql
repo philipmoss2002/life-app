@@ -3,9 +3,9 @@
 # After running: amplify add api
 
 # Document model - represents a household document
-type Document @model @auth(rules: [{allow: owner}]) {
-  id: ID!
-  userId: String!
+type Document @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  syncId: String! @primaryKey
+  userId: String! @index(name: "byUserId", sortKeyFields: ["createdAt"])
   title: String!
   category: String!
   filePaths: [String!]!
@@ -18,23 +18,41 @@ type Document @model @auth(rules: [{allow: owner}]) {
   conflictId: String
   deleted: Boolean
   deletedAt: AWSDateTime
+  contentHash: String
 }
 
 # FileAttachment model - represents files attached to documents
-type FileAttachment @model @auth(rules: [{allow: owner}]) {
+type FileAttachment @model @auth(rules: [
+  {allow: owner, ownerField: "userId", identityClaim: "sub"},   
+  {allow: private, operations: [read]}]) {
   id: ID!
-  documentId: ID! @index(name: "byDocument", sortKeyFields: ["createdAt"])
+  syncId: String! @index(name: "bySyncId", sortKeyFields: ["addedAt"])
+  userId: String! @index(name: "byUserId", sortKeyFields: ["addedAt"])
   fileName: String!
   label: String
   fileSize: Int!
   s3Key: String!
-  localPath: String
-  createdAt: AWSDateTime!
+  filePath: String!
+  addedAt: AWSDateTime!
+  contentType: String
+  checksum: String
+  syncState: String!
+  document: Document @belongsTo(fields: ["syncId"])
+}
+
+# DocumentTombstone model - tracks deleted documents to prevent reinstatement
+type DocumentTombstone @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  syncId: String! @primaryKey
+  userId: String! @index(name: "byUserId")
+  deletedAt: AWSDateTime!
+  deletedBy: String!
+  reason: String!
 }
 
 # Device model - tracks devices connected to user account
-type Device @model @auth(rules: [{allow: owner}]) {
+type Device @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   id: ID!
+  userId: String!
   deviceName: String!
   deviceType: String!
   lastSyncTime: AWSDateTime!
@@ -43,8 +61,9 @@ type Device @model @auth(rules: [{allow: owner}]) {
 }
 
 # SyncQueue model - tracks pending sync operations (optional)
-type SyncQueue @model @auth(rules: [{allow: owner}]) {
+type SyncQueue @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   id: ID!
+  userId: String!
   operation: String!
   entityType: String!
   entityId: String!
@@ -53,7 +72,7 @@ type SyncQueue @model @auth(rules: [{allow: owner}]) {
 }
 
 # Subscription model - tracks user subscription status
-type Subscription @model @auth(rules: [{allow: owner}]) {
+type Subscription @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   id: ID!
   userId: String!
   planId: String!
@@ -76,7 +95,7 @@ enum SubscriptionStatus {
 }
 
 # StorageUsage model - tracks user's storage usage
-type StorageUsage @model @auth(rules: [{allow: owner}]) {
+type StorageUsage @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   id: ID!
   userId: String!
   usedBytes: Int!
@@ -87,8 +106,9 @@ type StorageUsage @model @auth(rules: [{allow: owner}]) {
 }
 
 # Conflict model - tracks sync conflicts (optional, for manual resolution)
-type Conflict @model @auth(rules: [{allow: owner}]) {
+type Conflict @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   id: ID!
+  userId: String!
   entityType: String!
   entityId: String!
   localVersion: AWSJSON!
@@ -154,7 +174,7 @@ enum ConflictResolution {
 # query ListDocuments {
 #   listDocuments(filter: {deleted: {eq: false}}) {
 #     items {
-#       id
+#       syncId
 #       title
 #       category
 #       renewalDate

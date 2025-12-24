@@ -27,6 +27,7 @@ import 'package:amplify_core/amplify_core.dart' as amplify_core;
 class Device extends amplify_core.Model {
   static const classType = const _DeviceModelType();
   final String id;
+  final String? _userId;
   final String? _deviceName;
   final String? _deviceType;
   final amplify_core.TemporalDateTime? _lastSyncTime;
@@ -45,6 +46,19 @@ class Device extends amplify_core.Model {
       return DeviceModelIdentifier(
         id: id
       );
+  }
+  
+  String get userId {
+    try {
+      return _userId!;
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
   }
   
   String get deviceName {
@@ -116,11 +130,12 @@ class Device extends amplify_core.Model {
     return _updatedAt;
   }
   
-  const Device._internal({required this.id, required deviceName, required deviceType, required lastSyncTime, required isActive, required createdAt, updatedAt}): _deviceName = deviceName, _deviceType = deviceType, _lastSyncTime = lastSyncTime, _isActive = isActive, _createdAt = createdAt, _updatedAt = updatedAt;
+  const Device._internal({required this.id, required userId, required deviceName, required deviceType, required lastSyncTime, required isActive, required createdAt, updatedAt}): _userId = userId, _deviceName = deviceName, _deviceType = deviceType, _lastSyncTime = lastSyncTime, _isActive = isActive, _createdAt = createdAt, _updatedAt = updatedAt;
   
-  factory Device({String? id, required String deviceName, required String deviceType, required amplify_core.TemporalDateTime lastSyncTime, required bool isActive, required amplify_core.TemporalDateTime createdAt}) {
+  factory Device({String? id, required String userId, required String deviceName, required String deviceType, required amplify_core.TemporalDateTime lastSyncTime, required bool isActive, required amplify_core.TemporalDateTime createdAt}) {
     return Device._internal(
       id: id == null ? amplify_core.UUID.getUUID() : id,
+      userId: userId,
       deviceName: deviceName,
       deviceType: deviceType,
       lastSyncTime: lastSyncTime,
@@ -137,6 +152,7 @@ class Device extends amplify_core.Model {
     if (identical(other, this)) return true;
     return other is Device &&
       id == other.id &&
+      _userId == other._userId &&
       _deviceName == other._deviceName &&
       _deviceType == other._deviceType &&
       _lastSyncTime == other._lastSyncTime &&
@@ -153,6 +169,7 @@ class Device extends amplify_core.Model {
     
     buffer.write("Device {");
     buffer.write("id=" + "$id" + ", ");
+    buffer.write("userId=" + "$_userId" + ", ");
     buffer.write("deviceName=" + "$_deviceName" + ", ");
     buffer.write("deviceType=" + "$_deviceType" + ", ");
     buffer.write("lastSyncTime=" + (_lastSyncTime != null ? _lastSyncTime!.format() : "null") + ", ");
@@ -164,9 +181,10 @@ class Device extends amplify_core.Model {
     return buffer.toString();
   }
   
-  Device copyWith({String? deviceName, String? deviceType, amplify_core.TemporalDateTime? lastSyncTime, bool? isActive, amplify_core.TemporalDateTime? createdAt}) {
+  Device copyWith({String? userId, String? deviceName, String? deviceType, amplify_core.TemporalDateTime? lastSyncTime, bool? isActive, amplify_core.TemporalDateTime? createdAt}) {
     return Device._internal(
       id: id,
+      userId: userId ?? this.userId,
       deviceName: deviceName ?? this.deviceName,
       deviceType: deviceType ?? this.deviceType,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
@@ -175,6 +193,7 @@ class Device extends amplify_core.Model {
   }
   
   Device copyWithModelFieldValues({
+    ModelFieldValue<String>? userId,
     ModelFieldValue<String>? deviceName,
     ModelFieldValue<String>? deviceType,
     ModelFieldValue<amplify_core.TemporalDateTime>? lastSyncTime,
@@ -183,6 +202,7 @@ class Device extends amplify_core.Model {
   }) {
     return Device._internal(
       id: id,
+      userId: userId == null ? this.userId : userId.value,
       deviceName: deviceName == null ? this.deviceName : deviceName.value,
       deviceType: deviceType == null ? this.deviceType : deviceType.value,
       lastSyncTime: lastSyncTime == null ? this.lastSyncTime : lastSyncTime.value,
@@ -193,6 +213,7 @@ class Device extends amplify_core.Model {
   
   Device.fromJson(Map<String, dynamic> json)  
     : id = json['id'],
+      _userId = json['userId'],
       _deviceName = json['deviceName'],
       _deviceType = json['deviceType'],
       _lastSyncTime = json['lastSyncTime'] != null ? amplify_core.TemporalDateTime.fromString(json['lastSyncTime']) : null,
@@ -201,11 +222,12 @@ class Device extends amplify_core.Model {
       _updatedAt = json['updatedAt'] != null ? amplify_core.TemporalDateTime.fromString(json['updatedAt']) : null;
   
   Map<String, dynamic> toJson() => {
-    'id': id, 'deviceName': _deviceName, 'deviceType': _deviceType, 'lastSyncTime': _lastSyncTime?.format(), 'isActive': _isActive, 'createdAt': _createdAt?.format(), 'updatedAt': _updatedAt?.format()
+    'id': id, 'userId': _userId, 'deviceName': _deviceName, 'deviceType': _deviceType, 'lastSyncTime': _lastSyncTime?.format(), 'isActive': _isActive, 'createdAt': _createdAt?.format(), 'updatedAt': _updatedAt?.format()
   };
   
   Map<String, Object?> toMap() => {
     'id': id,
+    'userId': _userId,
     'deviceName': _deviceName,
     'deviceType': _deviceType,
     'lastSyncTime': _lastSyncTime,
@@ -216,6 +238,7 @@ class Device extends amplify_core.Model {
 
   static final amplify_core.QueryModelIdentifier<DeviceModelIdentifier> MODEL_IDENTIFIER = amplify_core.QueryModelIdentifier<DeviceModelIdentifier>();
   static final ID = amplify_core.QueryField(fieldName: "id");
+  static final USERID = amplify_core.QueryField(fieldName: "userId");
   static final DEVICENAME = amplify_core.QueryField(fieldName: "deviceName");
   static final DEVICETYPE = amplify_core.QueryField(fieldName: "deviceType");
   static final LASTSYNCTIME = amplify_core.QueryField(fieldName: "lastSyncTime");
@@ -228,8 +251,8 @@ class Device extends amplify_core.Model {
     modelSchemaDefinition.authRules = [
       amplify_core.AuthRule(
         authStrategy: amplify_core.AuthStrategy.OWNER,
-        ownerField: "owner",
-        identityClaim: "cognito:username",
+        ownerField: "userId",
+        identityClaim: "sub",
         provider: amplify_core.AuthRuleProvider.USERPOOLS,
         operations: const [
           amplify_core.ModelOperation.CREATE,
@@ -239,7 +262,17 @@ class Device extends amplify_core.Model {
         ])
     ];
     
+    modelSchemaDefinition.indexes = [
+      amplify_core.ModelIndex(fields: const ["userId"], name: "byUserId")
+    ];
+    
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.id());
+    
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: Device.USERID,
+      isRequired: true,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
     
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
       key: Device.DEVICENAME,

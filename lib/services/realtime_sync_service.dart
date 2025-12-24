@@ -3,6 +3,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import '../models/Document.dart';
 import 'database_service.dart';
 import 'auth_token_manager.dart';
+import 'sync_identifier_service.dart';
 
 /// Service responsible for real-time synchronization using GraphQL subscriptions
 /// Handles subscription setup, event processing, and local database updates
@@ -112,8 +113,8 @@ class RealtimeSyncService {
   Future<void> _startDocumentCreateSubscription(String userId) async {
     await _authManager.executeWithTokenRefresh(() async {
       const subscriptionDocument = '''
-        subscription OnCreateDocument(\$userId: String!) {
-          onCreateDocument(filter: {userId: {eq: \$userId}}) {
+        subscription OnCreateDocument {
+          onCreateDocument {
             id
             userId
             title
@@ -134,7 +135,7 @@ class RealtimeSyncService {
 
       final subscriptionRequest = GraphQLRequest<Document>(
         document: subscriptionDocument,
-        variables: {'userId': userId},
+        variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'onCreateDocument',
         modelType: Document.classType,
       );
@@ -156,8 +157,8 @@ class RealtimeSyncService {
   Future<void> _startDocumentUpdateSubscription(String userId) async {
     await _authManager.executeWithTokenRefresh(() async {
       const subscriptionDocument = '''
-        subscription OnUpdateDocument(\$userId: String!) {
-          onUpdateDocument(filter: {userId: {eq: \$userId}}) {
+        subscription OnUpdateDocument {
+          onUpdateDocument {
             id
             userId
             title
@@ -178,7 +179,7 @@ class RealtimeSyncService {
 
       final subscriptionRequest = GraphQLRequest<Document>(
         document: subscriptionDocument,
-        variables: {'userId': userId},
+        variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'onUpdateDocument',
         modelType: Document.classType,
       );
@@ -200,8 +201,8 @@ class RealtimeSyncService {
   Future<void> _startDocumentDeleteSubscription(String userId) async {
     await _authManager.executeWithTokenRefresh(() async {
       const subscriptionDocument = '''
-        subscription OnDeleteDocument(\$userId: String!) {
-          onDeleteDocument(filter: {userId: {eq: \$userId}}) {
+        subscription OnDeleteDocument {
+          onDeleteDocument {
             id
             userId
             title
@@ -222,7 +223,7 @@ class RealtimeSyncService {
 
       final subscriptionRequest = GraphQLRequest<Document>(
         document: subscriptionDocument,
-        variables: {'userId': userId},
+        variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'onDeleteDocument',
         modelType: Document.classType,
       );
@@ -245,7 +246,7 @@ class RealtimeSyncService {
     if (document == null) return;
 
     try {
-      safePrint('Received document create event: ${document.id}');
+      safePrint('Received document create event: ${document.syncId}');
 
       // Update local database
       await _updateLocalDocument(document);
@@ -253,7 +254,7 @@ class RealtimeSyncService {
       // Notify UI
       final notification = SyncEventNotification(
         type: SyncEventType.documentCreated,
-        documentId: document.id,
+        documentId: document.syncId,
         message: 'Document "${document.title}" created on another device',
         timestamp: DateTime.now(),
       );
@@ -274,10 +275,10 @@ class RealtimeSyncService {
     if (document == null) return;
 
     try {
-      safePrint('Received document update event: ${document.id}');
+      safePrint('Received document update event: ${document.syncId}');
 
       // Check for conflicts with local version
-      final localDoc = await _getLocalDocument(document.id);
+      final localDoc = await _getLocalDocument(document.syncId);
       if (localDoc != null && localDoc.version >= document.version) {
         // Local version is newer or same - potential conflict
         _handleVersionConflict(localDoc, document);
@@ -290,7 +291,7 @@ class RealtimeSyncService {
       // Notify UI
       final notification = SyncEventNotification(
         type: SyncEventType.documentUpdated,
-        documentId: document.id,
+        documentId: document.syncId,
         message: 'Document "${document.title}" updated on another device',
         timestamp: DateTime.now(),
       );
@@ -311,7 +312,7 @@ class RealtimeSyncService {
     if (document == null) return;
 
     try {
-      safePrint('Received document delete event: ${document.id}');
+      safePrint('Received document delete event: ${document.syncId}');
 
       // Update local database (soft delete)
       await _updateLocalDocument(document);
@@ -319,7 +320,7 @@ class RealtimeSyncService {
       // Notify UI
       final notification = SyncEventNotification(
         type: SyncEventType.documentDeleted,
-        documentId: document.id,
+        documentId: document.syncId,
         message: 'Document "${document.title}" deleted on another device',
         timestamp: DateTime.now(),
       );
@@ -341,7 +342,7 @@ class RealtimeSyncService {
     final localDocument = _convertAmplifyToLocalDocument(document);
 
     // Check if document exists locally
-    final existingDoc = await _getLocalDocument(document.id);
+    final existingDoc = await _getLocalDocument(document.syncId);
 
     if (existingDoc != null) {
       // Update existing document
@@ -357,7 +358,7 @@ class RealtimeSyncService {
     try {
       final allDocs = await _databaseService.getAllDocuments();
       for (final doc in allDocs) {
-        if (doc.id == documentId) {
+        if (doc.syncId == documentId) {
           return doc;
         }
       }
@@ -373,7 +374,7 @@ class RealtimeSyncService {
     // Convert Amplify Document to local Document format using DocumentExtensions
     // This ensures compatibility with DatabaseService which expects Document objects
     return Document(
-      id: amplifyDoc.id,
+      syncId: amplifyDoc.syncId ?? SyncIdentifierService.generateValidated(),
       userId: amplifyDoc.userId,
       title: amplifyDoc.title,
       category: amplifyDoc.category,
@@ -392,11 +393,11 @@ class RealtimeSyncService {
 
   /// Handle version conflicts between local and remote documents
   void _handleVersionConflict(Document localDoc, Document remoteDoc) {
-    safePrint('Version conflict detected for document: ${remoteDoc.id}');
+    safePrint('Version conflict detected for document: ${remoteDoc.syncId}');
 
     final notification = SyncEventNotification(
       type: SyncEventType.conflictDetected,
-      documentId: remoteDoc.id,
+      documentId: remoteDoc.syncId,
       message: 'Conflict detected for document "${remoteDoc.title}"',
       timestamp: DateTime.now(),
       conflictData: {

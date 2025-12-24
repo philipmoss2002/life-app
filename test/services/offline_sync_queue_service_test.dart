@@ -4,6 +4,7 @@ import 'package:household_docs_app/services/offline_sync_queue_service.dart';
 import 'package:household_docs_app/models/Document.dart';
 import '../test_helpers.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 void main() {
   group('OfflineSyncQueueService', () {
     late OfflineSyncQueueService queueService;
@@ -45,9 +46,9 @@ void main() {
           final priority = random.nextInt(3); // 0, 1, or 2
           const operationType = QueuedOperationType.upload;
 
-          final document = TestHelpers.createRandomDocument(
-            id: documentId,
-            userId: 'test_user',
+          final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: 'test_user',
           );
 
           operations.add({
@@ -101,9 +102,9 @@ void main() {
          */
 
         const documentId = 'test_doc_123';
-        final document = TestHelpers.createRandomDocument(
-          id: documentId,
-          userId: 'test_user',
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
         // Queue multiple update operations for the same document
@@ -141,7 +142,7 @@ void main() {
         // After consolidation, there should be only one operation for this document
         final status = queueService.getQueueStatus();
         final documentOperations =
-            queueService.getOperationsForDocument(documentId);
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
 
         // Verify consolidation occurred (multiple updates should be consolidated)
         expect(documentOperations.length, lessThanOrEqualTo(1));
@@ -163,9 +164,9 @@ void main() {
          */
 
         const documentId = 'test_doc_456';
-        final document = TestHelpers.createRandomDocument(
-          id: documentId,
-          userId: 'test_user',
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
         // Queue several operations for the same document
@@ -191,7 +192,7 @@ void main() {
 
         // Verify operations were queued
         var documentOperations =
-            queueService.getOperationsForDocument(documentId);
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
         expect(documentOperations.length, greaterThan(1));
 
         // Queue a delete operation
@@ -203,7 +204,7 @@ void main() {
         );
 
         // After delete, there should only be the delete operation
-        documentOperations = queueService.getOperationsForDocument(documentId);
+        documentOperations = queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
         expect(documentOperations.length, equals(1));
         expect(
             documentOperations.first.type, equals(QueuedOperationType.delete));
@@ -216,9 +217,9 @@ void main() {
          */
 
         const documentId = 'persistent_doc_789';
-        final document = TestHelpers.createRandomDocument(
-          id: documentId,
-          userId: 'test_user',
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
         // Queue operations
@@ -250,7 +251,7 @@ void main() {
         expect(status.totalOperations, equals(originalCount));
 
         final restoredOperations =
-            newQueueService.getOperationsForDocument(documentId);
+            newQueueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
         expect(restoredOperations.length, equals(2));
 
         // Verify operation types were preserved
@@ -280,9 +281,9 @@ void main() {
           final baseVersion = random.nextInt(5) + 1;
 
           // Create a document that will be queued for update
-          final baseDocument = TestHelpers.createRandomDocument(
-            id: documentId,
-            userId: 'test_user',
+          final baseDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: 'test_user',
             title: 'Local Version $scenario',
           );
 
@@ -300,7 +301,7 @@ void main() {
 
           // Verify the operation was queued
           final queuedOperations =
-              queueService.getOperationsForDocument(documentId);
+              queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
           expect(queuedOperations.length, equals(1));
           expect(
               queuedOperations.first.type, equals(QueuedOperationType.update));
@@ -308,7 +309,7 @@ void main() {
           // Verify the operation contains the expected document data
           final queuedDocument = Document.fromJson(
               queuedOperations.first.operationData['document']);
-          expect(queuedDocument.id, equals(documentId));
+          expect(queuedDocument.syncId, equals(documentId));
           expect(queuedDocument.version, equals(baseVersion));
           expect(queuedDocument.title, equals('Local Version $scenario'));
         }
@@ -326,7 +327,7 @@ void main() {
         // Test that operations maintain version information for conflict detection
         for (int scenario = 0; scenario < 3; scenario++) {
           final documentId = 'conflict_doc_$scenario';
-          final operations = queueService.getOperationsForDocument(documentId);
+          final operations = queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
 
           expect(operations.length, equals(1));
           final operation = operations.first;
@@ -335,7 +336,7 @@ void main() {
 
           // Verify version information is preserved (essential for conflict detection)
           expect(document.version, greaterThan(0));
-          expect(document.id, equals(documentId));
+          expect(document.syncId, equals(documentId));
           expect(document.lastModified, isNotNull);
         }
 
@@ -348,7 +349,7 @@ void main() {
         for (int scenario = 0; scenario < 3; scenario++) {
           final documentId = 'conflict_doc_$scenario';
           allOperations
-              .addAll(queueService.getOperationsForDocument(documentId));
+              .addAll(queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId));
         }
 
         for (final operation in allOperations) {
@@ -361,7 +362,7 @@ void main() {
           // Essential fields for conflict detection must be present
           expect(document.version, isA<int>());
           expect(document.lastModified, isNotNull);
-          expect(document.id, isNotNull);
+          expect(document.syncId, isNotNull);
           expect(document.userId, isNotEmpty);
 
           // Operation metadata must be preserved
@@ -374,9 +375,9 @@ void main() {
 
     group('Unit Tests', () {
       test('should queue operations with correct priority ordering', () async {
-        final document = TestHelpers.createRandomDocument(
-          id: 'test_doc',
-          userId: 'test_user',
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
         // Queue operations with different priorities
@@ -421,9 +422,9 @@ void main() {
       });
 
       test('should clear queue completely', () async {
-        final document = TestHelpers.createRandomDocument(
-          id: 'test_doc',
-          userId: 'test_user',
+        final document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
         // Queue some operations
@@ -450,14 +451,14 @@ void main() {
       });
 
       test('should remove operations for specific document', () async {
-        final document1 = TestHelpers.createRandomDocument(
-          id: 'doc1',
-          userId: 'test_user',
+        final document1 = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
-        final document2 = TestHelpers.createRandomDocument(
-          id: 'doc2',
-          userId: 'test_user',
+        final document2 = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user',
         );
 
         // Queue operations for different documents
@@ -483,13 +484,13 @@ void main() {
         expect(status.totalOperations, equals(3));
 
         // Remove operations for doc1
-        await queueService.removeOperationsForDocument('doc1');
+        await queueService.removeOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc1');
 
         status = queueService.getQueueStatus();
         expect(status.totalOperations, equals(1));
 
         final remainingOperations =
-            queueService.getOperationsForDocument('doc2');
+            queueService.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), 'doc2');
         expect(remainingOperations.length, equals(1));
       });
     });

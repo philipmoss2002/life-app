@@ -29,8 +29,8 @@ void main() {
       syncService = CloudSyncService();
     });
 
-    tearDown(() async {
-      await syncService.dispose();
+    tearDown(() {
+      syncService.dispose();
     });
 
     /// Property 5: Offline Queue Persistence
@@ -69,9 +69,9 @@ void main() {
       // 5. Queue should be empty after successful sync
 
       // For now, verify the queue management methods exist
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: faker.randomGenerator
             .element(['Insurance', 'Warranty', 'Contract']),
@@ -114,9 +114,9 @@ void main() {
       // Generate multiple random documents
       final documents = List.generate(
         10,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000).toString(),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
@@ -151,8 +151,8 @@ void main() {
       syncService = CloudSyncService();
     });
 
-    tearDown(() async {
-      await syncService.dispose();
+    tearDown(() {
+      syncService.dispose();
     });
 
     test('service instance is singleton', () {
@@ -193,9 +193,9 @@ void main() {
     });
 
     test('queueDocumentSync adds operation to queue', () async {
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -239,8 +239,7 @@ void main() {
 
     test('SyncOperation model has correct structure', () {
       final operation = SyncOperation(
-        id: faker.guid.guid(),
-        documentId: faker.randomGenerator.integer(10000).toString(),
+                documentId: faker.randomGenerator.integer(10000).toString(),
         type: SyncOperationType.upload,
         retryCount: 0,
       );
@@ -254,8 +253,7 @@ void main() {
 
     test('SyncOperation copyWith creates new instance', () {
       final operation = SyncOperation(
-        id: 'test-id',
-        documentId: '123',
+                documentId: '123',
         type: SyncOperationType.upload,
         retryCount: 0,
       );
@@ -290,8 +288,8 @@ void main() {
       syncService = CloudSyncService();
     });
 
-    tearDown() async {
-      await syncService.dispose();
+    tearDown() {
+      syncService.dispose();
     }
 
     /// Integration Test: End-to-end document synchronization
@@ -309,9 +307,9 @@ void main() {
     test('Integration: End-to-end document synchronization structure',
         () async {
       // Test the integration flow structure
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -347,9 +345,9 @@ void main() {
       // Test the offline-to-online flow structure
       final documents = List.generate(
         5,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000).toString(),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: 'Warranty',
           filePaths: [],
@@ -386,9 +384,9 @@ void main() {
     /// 6. Verify failed operations are marked as error after max retries
     test('Integration: Sync queue processing structure', () async {
       // Test the queue processing structure
-      final uploadDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final uploadDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Upload Test',
         category: 'Insurance',
         filePaths: [],
@@ -398,9 +396,9 @@ void main() {
         syncState: SyncState.notSynced.toJson(),
       );
 
-      final updateDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final updateDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Update Test',
         category: 'Warranty',
         filePaths: [],
@@ -410,9 +408,9 @@ void main() {
         syncState: SyncState.pending.toJson(),
       );
 
-      final deleteDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final deleteDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Delete Test',
         category: 'Contract',
         filePaths: [],
@@ -442,9 +440,9 @@ void main() {
       });
 
       // Queue a document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000).toString(),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
@@ -469,9 +467,9 @@ void main() {
       // Test handling of multiple concurrent operations
       final documents = List.generate(
         20,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000).toString(),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: 'Document $index',
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),

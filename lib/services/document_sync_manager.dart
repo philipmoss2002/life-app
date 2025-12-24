@@ -1,4 +1,7 @@
+﻿import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:amplify_api/amplify_api.dart';
+import 'package:uuid/uuid.dart';
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 import 'retry_manager.dart';
@@ -8,6 +11,8 @@ import 'error_state_manager.dart';
 import 'document_validation_service.dart';
 import 'performance_monitor.dart';
 import 'log_service.dart' as app_log;
+import 'sync_identifier_service.dart';
+import 'file_attachment_sync_manager.dart';
 
 /// Exception thrown when a version conflict is detected
 class VersionConflictException implements Exception {
@@ -40,6 +45,8 @@ class DocumentSyncManager {
       DocumentValidationService();
   final PerformanceMonitor _performanceMonitor = PerformanceMonitor();
   final app_log.LogService _logService = app_log.LogService();
+  final FileAttachmentSyncManager _fileAttachmentSyncManager =
+      FileAttachmentSyncManager();
 
   // Helper methods for logging
   void _logInfo(String message) =>
@@ -48,15 +55,104 @@ class DocumentSyncManager {
       _logService.log(message, level: app_log.LogLevel.error);
   void _logWarning(String message) =>
       _logService.log(message, level: app_log.LogLevel.warning);
-  void _logDebug(String message) =>
-      _logService.log(message, level: app_log.LogLevel.debug);
+
+  /// Handle duplicate sync ID errors by generating a new sync ID and retrying
+  Future<Document> _handleDuplicateSyncIdError(
+    Document document,
+    String graphQLDocument,
+    Exception originalError,
+  ) async {
+    _logWarning(
+        'Handling duplicate sync ID error for document: ${document.syncId}');
+
+    // Generate a new unique sync identifier
+    final newSyncId = const Uuid().v4();
+
+    // Create new document instance with new sync ID
+    final retryDocument = Document(
+      syncId: newSyncId,
+      userId: document.userId,
+      title: document.title,
+      category: document.category,
+      filePaths: document.filePaths,
+      renewalDate: document.renewalDate,
+      notes: document.notes,
+      createdAt: document.createdAt,
+      lastModified: document.lastModified,
+      version: document.version,
+      syncState: document.syncState,
+      conflictId: document.conflictId,
+      deleted: document.deleted,
+      deletedAt: document.deletedAt,
+      contentHash: document.contentHash,
+      fileAttachments: document.fileAttachments,
+    );
+
+    _logInfo('Retrying with new sync ID: $newSyncId');
+
+    // Create retry request
+    final retryRequest = GraphQLRequest<Document>(
+      document: graphQLDocument,
+      variables: {
+        'input': {
+          'syncId': retryDocument.syncId,
+          'userId': retryDocument.userId,
+          'title': retryDocument.title,
+          'category': retryDocument.category,
+          'filePaths': retryDocument.filePaths,
+          'renewalDate': retryDocument.renewalDate?.format(),
+          'notes': retryDocument.notes,
+          'createdAt': retryDocument.createdAt.format(),
+          'lastModified': retryDocument.lastModified.format(),
+          'version': retryDocument.version,
+          'syncState': retryDocument.syncState,
+          'conflictId': retryDocument.conflictId,
+          'deleted': retryDocument.deleted,
+          'deletedAt': retryDocument.deletedAt?.format(),
+          'contentHash': retryDocument.contentHash,
+        }
+      },
+      decodePath: 'createDocument',
+      modelType: Document.classType,
+    );
+
+    final retryResponse =
+        await Amplify.API.mutate(request: retryRequest).response;
+
+    if (retryResponse.hasErrors) {
+      final retryErrors = retryResponse.errors.map((e) => e.message).join(', ');
+      _logError('Retry failed: $retryErrors');
+      throw Exception('Upload failed after retry: $retryErrors');
+    }
+
+    if (retryResponse.data == null) {
+      throw Exception('Retry failed: No data returned from server');
+    }
+
+    _logInfo(
+        'Document uploaded successfully with new sync ID: ${retryDocument.syncId}');
+    return retryResponse.data!;
+  }
 
   /// Upload a document to DynamoDB
-  /// Creates a new document record in remote storage
-  /// Returns the document with the DynamoDB-generated ID
+  /// Creates a new document record in remote storage using syncId as primary key
+  ///
+  /// **Requirements:**
+  /// - Document MUST have a valid sync identifier (UUID v4 format)
+  /// - Sync identifier will be used as the DynamoDB partition key
+  /// - Document will be validated before upload
+  ///
+  /// **Parameters:**
+  /// - [document]: Document with sync identifier and all required fields
+  ///
+  /// **Returns:** Document with confirmed sync identifier and synced state
+  ///
+  /// **Throws:**
+  /// - ArgumentError if document lacks sync identifier or has invalid format
+  /// - Exception if upload fails due to network or validation errors
   Future<Document> uploadDocument(Document document) async {
     final operationId =
-        'upload_${document.id}_${DateTime.now().millisecondsSinceEpoch}';
+        'upload_${document.syncId}_${DateTime.now().millisecondsSinceEpoch}';
     _performanceMonitor.startOperation(operationId, 'document_upload');
 
     try {
@@ -69,23 +165,34 @@ class DocumentSyncManager {
             // Validate document before upload
             _validationService.validateDocumentForUpload(document);
 
+            // Ensure document has a sync identifier and validate it
+            if (document.syncId.isEmpty) {
+              throw ArgumentError(
+                  'Document must have a sync identifier for upload. '
+                  'Document: "${document.title}" (syncId: ${document.syncId})');
+            }
+
+            // Validate sync identifier format
+            SyncIdentifierService.validateOrThrow(document.syncId,
+                context: 'document upload');
+
             // Sanitize document input
             final sanitizedDocument =
                 _validationService.sanitizeDocument(document);
 
-            // Create the document with synced state and let DynamoDB generate the ID
+            // Create the document with synced state using syncId as primary key
             final documentToUpload = sanitizedDocument.copyWith(
               syncState: SyncState.synced.toJson(),
             );
 
-            _logInfo('📋 Original document ID: ${documentToUpload.id}');
-            _logInfo('📋 Document ID type: ${documentToUpload.id.runtimeType}');
+            _logInfo('Ã°Å¸â€œâ€¹ Document syncId: ${documentToUpload.syncId}');
+            _logInfo('Ã°Å¸â€œâ€¹ Document title: ${documentToUpload.title}');
 
             // Use Amplify API to create document in DynamoDB via GraphQL
             const graphQLDocument = '''
             mutation CreateDocument(\$input: CreateDocumentInput!) {
               createDocument(input: \$input) {
-                id
+                syncId
                 userId
                 title
                 category
@@ -99,6 +206,7 @@ class DocumentSyncManager {
                 conflictId
                 deleted
                 deletedAt
+                contentHash
               }
             }
           ''';
@@ -107,7 +215,7 @@ class DocumentSyncManager {
               document: graphQLDocument,
               variables: {
                 'input': {
-                  // Don't include 'id' - let DynamoDB auto-generate it
+                  'syncId': documentToUpload.syncId,
                   'userId': documentToUpload.userId,
                   'title': documentToUpload.title,
                   'category': documentToUpload.category,
@@ -121,53 +229,63 @@ class DocumentSyncManager {
                   'conflictId': documentToUpload.conflictId,
                   'deleted': documentToUpload.deleted,
                   'deletedAt': documentToUpload.deletedAt?.format(),
+                  'contentHash': documentToUpload.contentHash,
                 }
               },
               decodePath: 'createDocument',
               modelType: Document.classType,
+              authorizationMode: APIAuthorizationType.userPools,
             );
 
-            _logInfo('📤 Sending GraphQL mutation to DynamoDB...');
-            _logInfo('📋 Document data: ${documentToUpload.title}');
-            _logInfo('👤 User ID: ${documentToUpload.userId}');
-            _logInfo('📁 File paths: ${documentToUpload.filePaths}');
+            _logInfo('Ã°Å¸â€œÂ¤ Sending GraphQL mutation to DynamoDB...');
+            _logInfo('Ã°Å¸â€œâ€¹ Document data: ${documentToUpload.title}');
+            _logInfo('Ã°Å¸â€˜Â¤ User ID: ${documentToUpload.userId}');
+            _logInfo('Ã°Å¸â€â€˜ Sync ID: ${documentToUpload.syncId}');
+            _logInfo('Ã°Å¸â€œÂ File paths: ${documentToUpload.filePaths}');
 
             final response =
                 await Amplify.API.mutate(request: request).response;
 
-            _logInfo('📨 GraphQL response received');
-            _logInfo('❓ Has errors: ${response.hasErrors}');
+            _logInfo('Ã°Å¸â€œÂ¨ GraphQL response received');
+            _logInfo('Ã¢Ââ€œ Has errors: ${response.hasErrors}');
 
             if (response.hasErrors) {
               _logError(
-                  '❌ GraphQL errors: ${response.errors.map((e) => e.message).join(', ')}');
+                  'Ã¢ÂÅ’ GraphQL errors: ${response.errors.map((e) => e.message).join(', ')}');
               throw Exception(
                   'Upload failed: ${response.errors.map((e) => e.message).join(', ')}');
             }
 
             if (response.data == null) {
-              _logError('❌ No data returned from GraphQL mutation');
+              _logError('Ã¢ÂÅ’ No data returned from GraphQL mutation');
               throw Exception('Upload failed: No data returned from server');
             }
 
-            _logInfo('✅ Document successfully created in DynamoDB');
-            _logInfo('📄 Created document ID: ${response.data?.id}');
-
-            // If DynamoDB generated a new ID, we should update the local document
-            if (response.data?.id != null &&
-                response.data!.id != documentToUpload.id) {
-              _logInfo('🔄 DynamoDB generated new ID: ${response.data!.id}');
-              _logInfo('📝 Original local ID was: ${documentToUpload.id}');
-              // Note: The caller should handle updating the local database with the new ID
-            }
+            _logInfo('Ã¢Å“â€¦ Document successfully created in DynamoDB');
+            _logInfo(
+                'Ã°Å¸â€â€˜ Created document syncId: ${response.data?.syncId}');
 
             if (response.data == null) {
               throw Exception('Upload failed: No data returned from server');
             }
 
-            _logInfo('Document uploaded successfully: ${document.id}');
+            _logInfo('Document uploaded successfully: ${document.syncId}');
 
-            // Return the document with the DynamoDB-generated ID
+            // Sync FileAttachments for this document to DynamoDB
+            try {
+              _logInfo(
+                  '🔄 Starting FileAttachment sync for document: ${document.syncId}');
+              await _fileAttachmentSyncManager
+                  .syncFileAttachmentsForDocument(document.syncId);
+              _logInfo(
+                  '✅ FileAttachment sync completed for document: ${document.syncId}');
+            } catch (e) {
+              _logWarning(
+                  '⚠️ FileAttachment sync failed for document ${document.syncId}: $e');
+              // Don't fail the entire document upload if FileAttachment sync fails
+            }
+
+            // Return the document with the syncId as identifier
             return response.data!;
           },
           config: RetryManager.networkRetryConfig,
@@ -182,11 +300,27 @@ class DocumentSyncManager {
     }
   }
 
-  /// Download a document from DynamoDB by ID
-  /// Returns the document if found, throws exception otherwise
-  Future<Document> downloadDocument(String documentId) async {
+  /// Download a document from DynamoDB by syncId
+  ///
+  /// **Requirements:**
+  /// - [syncId] MUST be a valid UUID v4 format
+  /// - Document with the sync identifier MUST exist in DynamoDB
+  ///
+  /// **Parameters:**
+  /// - [syncId]: Valid UUID v4 sync identifier
+  ///
+  /// **Returns:** Document with all fields populated from remote storage
+  ///
+  /// **Throws:**
+  /// - Exception if sync identifier format is invalid
+  /// - Exception if document not found
+  /// - Exception if download fails due to network errors
+  Future<Document> downloadDocument(String syncId) async {
+    // Validate sync identifier format
+    SyncIdentifierService.validateOrThrow(syncId, context: 'document download');
+
     final operationId =
-        'download_${documentId}_${DateTime.now().millisecondsSinceEpoch}';
+        'download_${syncId}_${DateTime.now().millisecondsSinceEpoch}';
     _performanceMonitor.startOperation(operationId, 'document_download');
 
     try {
@@ -196,11 +330,11 @@ class DocumentSyncManager {
             // Validate authentication before operation
             await _authManager.validateTokenBeforeOperation();
 
-            // Use Amplify API to get document from DynamoDB via GraphQL
+            // Use Amplify API to get document from DynamoDB via GraphQL using syncId
             const graphQLDocument = '''
-          query GetDocument(\$id: ID!) {
-            getDocument(id: \$id) {
-              id
+          query GetDocument(\$syncId: String!) {
+            getDocument(syncId: \$syncId) {
+              syncId
               userId
               title
               category
@@ -214,15 +348,31 @@ class DocumentSyncManager {
               conflictId
               deleted
               deletedAt
+              contentHash
+              fileAttachments {
+                items {
+                  syncId
+                  fileName
+                  label
+                  fileSize
+                  s3Key
+                  filePath
+                  addedAt
+                  contentType
+                  checksum
+                  syncState
+                }
+              }
             }
           }
         ''';
 
             final request = GraphQLRequest<Document>(
               document: graphQLDocument,
-              variables: {'id': documentId},
+              variables: {'syncId': syncId},
               decodePath: 'getDocument',
               modelType: Document.classType,
+              authorizationMode: APIAuthorizationType.userPools,
             );
 
             final response = await Amplify.API.query(request: request).response;
@@ -233,14 +383,14 @@ class DocumentSyncManager {
             }
 
             if (response.data == null) {
-              throw Exception('Document not found: $documentId');
+              throw Exception('Document not found: $syncId');
             }
 
             // Validate downloaded document structure
             _validationService
                 .validateDownloadedDocument(response.data!.toJson());
 
-            _logInfo('Document downloaded successfully: $documentId');
+            _logInfo('Document downloaded successfully: $syncId');
             return response.data!;
           },
           config: RetryManager.networkRetryConfig,
@@ -265,8 +415,20 @@ class DocumentSyncManager {
     }
   }
 
-  /// Update a document in DynamoDB with version checking
-  /// Throws VersionConflictException if versions don't match
+  /// Update a document in DynamoDB with version checking using syncId
+  ///
+  /// **Requirements:**
+  /// - Document MUST have a valid sync identifier (UUID v4 format)
+  /// - Version checking is performed to detect conflicts
+  /// - Document will be validated before update
+  ///
+  /// **Parameters:**
+  /// - [document]: Document with sync identifier and updated fields
+  ///
+  /// **Throws:**
+  /// - Exception if document lacks sync identifier
+  /// - VersionConflictException if versions don't match
+  /// - Exception if update fails due to network or validation errors
   Future<void> updateDocument(Document document) async {
     return await _authManager.executeWithTokenRefresh(() async {
       return await _retryManager.executeWithRetry(
@@ -277,25 +439,31 @@ class DocumentSyncManager {
           // Validate document before update
           _validationService.validateDocumentForUpdate(document);
 
+          // Ensure document has a sync identifier
+          if (document.syncId.isEmpty) {
+            throw Exception('Document must have a sync identifier for update');
+          }
+
           // Sanitize document input
           final sanitizedDocument =
               _validationService.sanitizeDocument(document);
 
-          // Fetch current version from DynamoDB
-          final remoteDocument = await downloadDocument(sanitizedDocument.id);
+          // Fetch current version from DynamoDB using syncId
+          final remoteDocument =
+              await downloadDocument(sanitizedDocument.syncId);
 
           // Check for version conflict
           if (remoteDocument.version != sanitizedDocument.version) {
             // Register the conflict with the conflict manager
             _conflictManager.detectConflict(
-              sanitizedDocument.id,
+              sanitizedDocument.syncId,
               sanitizedDocument,
               remoteDocument,
             );
 
             throw VersionConflictException(
               message:
-                  'Version conflict detected for document ${sanitizedDocument.id}',
+                  'Version conflict detected for document ${sanitizedDocument.syncId}',
               localDocument: sanitizedDocument,
               remoteDocument: remoteDocument,
             );
@@ -304,15 +472,15 @@ class DocumentSyncManager {
           // Increment version and update lastModified for the update
           final updatedDocument = sanitizedDocument.copyWith(
             version: sanitizedDocument.version + 1,
-            lastModified: TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
             syncState: SyncState.synced.toJson(),
           );
 
-          // Use Amplify API to update document in DynamoDB via GraphQL
+          // Use Amplify API to update document in DynamoDB via GraphQL using syncId
           const graphQLDocument = '''
           mutation UpdateDocument(\$input: UpdateDocumentInput!) {
             updateDocument(input: \$input) {
-              id
+              syncId
               userId
               title
               category
@@ -326,6 +494,7 @@ class DocumentSyncManager {
               conflictId
               deleted
               deletedAt
+              contentHash
             }
           }
         ''';
@@ -334,7 +503,7 @@ class DocumentSyncManager {
             document: graphQLDocument,
             variables: {
               'input': {
-                'id': updatedDocument.id,
+                'syncId': updatedDocument.syncId,
                 'userId': updatedDocument.userId,
                 'title': updatedDocument.title,
                 'category': updatedDocument.category,
@@ -348,10 +517,12 @@ class DocumentSyncManager {
                 'conflictId': updatedDocument.conflictId,
                 'deleted': updatedDocument.deleted,
                 'deletedAt': updatedDocument.deletedAt?.format(),
+                'contentHash': updatedDocument.contentHash,
               }
             },
             decodePath: 'updateDocument',
             modelType: Document.classType,
+            authorizationMode: APIAuthorizationType.userPools,
           );
 
           final response = await Amplify.API.mutate(request: request).response;
@@ -365,7 +536,7 @@ class DocumentSyncManager {
             throw Exception('Update failed: No data returned from server');
           }
 
-          _logInfo('Document updated successfully: ${document.id}');
+          _logInfo('Document updated successfully: ${document.syncId}');
         },
         config: RetryManager.networkRetryConfig,
         shouldRetry: (error) {
@@ -379,27 +550,48 @@ class DocumentSyncManager {
     });
   }
 
-  /// Delete a document from DynamoDB (soft delete)
-  /// Marks the document as deleted rather than removing it
-  Future<void> deleteDocument(String documentId) async {
+  /// Delete a document from DynamoDB (soft delete) using syncId
+  ///
+  /// **Requirements:**
+  /// - [syncId] MUST be a valid UUID v4 format
+  /// - Document with the sync identifier MUST exist in DynamoDB
+  /// - Performs soft delete by marking document as deleted
+  ///
+  /// **Parameters:**
+  /// - [syncId]: Valid UUID v4 sync identifier of document to delete
+  ///
+  /// **Behavior:**
+  /// - Fetches current document to get latest version
+  /// - Marks document as deleted with timestamp
+  /// - Increments version number for conflict detection
+  /// - Preserves document data for tombstone tracking
+  ///
+  /// **Throws:**
+  /// - Exception if sync identifier format is invalid
+  /// - Exception if document not found
+  /// - Exception if delete fails due to network errors
+  Future<void> deleteDocument(String syncId) async {
+    // Validate sync identifier format
+    SyncIdentifierService.validateOrThrow(syncId, context: 'document deletion');
+
     try {
-      // Fetch the document first
-      final document = await downloadDocument(documentId);
+      // Fetch the document first using syncId
+      final document = await downloadDocument(syncId);
 
       // Mark as deleted by updating with a deleted flag
       final deletedDocument = document.copyWith(
-        lastModified: TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
         version: document.version + 1,
         syncState: SyncState.synced.toJson(),
         deleted: true,
-        deletedAt: TemporalDateTime.now(),
+        deletedAt: amplify_core.TemporalDateTime.now(),
       );
 
       // Use Amplify API to update document in DynamoDB via GraphQL (soft delete)
       const graphQLDocument = '''
         mutation UpdateDocument(\$input: UpdateDocumentInput!) {
           updateDocument(input: \$input) {
-            id
+            syncId
             userId
             title
             category
@@ -413,6 +605,7 @@ class DocumentSyncManager {
             conflictId
             deleted
             deletedAt
+            contentHash
           }
         }
       ''';
@@ -421,7 +614,7 @@ class DocumentSyncManager {
         document: graphQLDocument,
         variables: {
           'input': {
-            'id': deletedDocument.id,
+            'syncId': deletedDocument.syncId,
             'userId': deletedDocument.userId,
             'title': deletedDocument.title,
             'category': deletedDocument.category,
@@ -435,40 +628,63 @@ class DocumentSyncManager {
             'conflictId': deletedDocument.conflictId,
             'deleted': deletedDocument.deleted,
             'deletedAt': deletedDocument.deletedAt?.format(),
+            'contentHash': deletedDocument.contentHash,
           }
         },
         decodePath: 'updateDocument',
         modelType: Document.classType,
+        authorizationMode: APIAuthorizationType.userPools,
       );
 
+      _logInfo(
+          'Ã°Å¸â€”â€˜Ã¯Â¸Â Sending delete mutation to DynamoDB for document: $syncId');
       final response = await Amplify.API.mutate(request: request).response;
 
       if (response.hasErrors) {
+        _logError(
+            'Ã¢ÂÅ’ Delete mutation errors: ${response.errors.map((e) => e.message).join(', ')}');
         throw Exception(
             'Delete failed: ${response.errors.map((e) => e.message).join(', ')}');
       }
 
       if (response.data == null) {
+        _logError('Ã¢ÂÅ’ Delete mutation returned no data');
         throw Exception('Delete failed: No data returned from server');
       }
 
-      _logInfo('Document deleted successfully: $documentId');
+      final updatedDoc = response.data!;
+      _logInfo('Ã¢Å“â€¦ Document deletion mutation successful: $syncId');
+      _logInfo(
+          'Ã°Å¸â€Â Updated document deleted flag: ${updatedDoc.deleted}');
+      _logInfo('Ã°Å¸â€Â Updated document deletedAt: ${updatedDoc.deletedAt}');
+      _logInfo('Ã°Å¸â€Â Updated document version: ${updatedDoc.version}');
     } catch (e) {
       _logError('Error deleting document: $e');
       rethrow;
     }
   }
 
-  /// Fetch all documents for the current user from DynamoDB
+  /// Fetch all documents for the current user from DynamoDB using owner authorization
   /// Used for initial sync when setting up a new device
   Future<List<Document>> fetchAllDocuments(String userId) async {
     try {
-      // Query DynamoDB for all documents belonging to the user via GraphQL
+      // Validate user is authenticated
+      final authSession = await Amplify.Auth.fetchAuthSession();
+      if (!authSession.isSignedIn) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get current user to verify identity
+      final currentUser = await Amplify.Auth.getCurrentUser();
+      _logInfo('Fetching documents for user: ${currentUser.userId}');
+
+      // Query DynamoDB for all documents belonging to the authenticated user
+      // The @auth(rules: [{allow: owner}]) rule automatically filters by owner
       const graphQLDocument = '''
-        query ListDocuments(\$filter: ModelDocumentFilterInput) {
-          listDocuments(filter: \$filter) {
+        query ListDocuments {
+          listDocuments(filter: {deleted: {ne: true}}) {
             items {
-              id
+              syncId
               userId
               title
               category
@@ -482,6 +698,21 @@ class DocumentSyncManager {
               conflictId
               deleted
               deletedAt
+              contentHash
+              fileAttachments {
+                items {
+                  syncId
+                  fileName
+                  label
+                  fileSize
+                  s3Key
+                  filePath
+                  addedAt
+                  contentType
+                  checksum
+                  syncState
+                }
+              }
             }
           }
         }
@@ -489,14 +720,10 @@ class DocumentSyncManager {
 
       final request = GraphQLRequest<PaginatedResult<Document>>(
         document: graphQLDocument,
-        variables: {
-          'filter': {
-            'userId': {'eq': userId},
-            'deleted': {'ne': true}
-          }
-        },
+        variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'listDocuments',
         modelType: const PaginatedModelType(Document.classType),
+        authorizationMode: APIAuthorizationType.userPools, // Force Cognito auth
       );
 
       final response = await Amplify.API.query(request: request).response;
@@ -520,52 +747,56 @@ class DocumentSyncManager {
     }
   }
 
-  /// Get the sync state of a document
-  Future<SyncState> getDocumentSyncState(String documentId) async {
+  /// Get the sync state of a document using syncId
+  Future<SyncState> getDocumentSyncState(String syncId) async {
+    // Validate sync identifier format
+    SyncIdentifierService.validateOrThrow(syncId,
+        context: 'sync state retrieval');
+
     try {
-      final document = await downloadDocument(documentId);
+      final document = await downloadDocument(syncId);
       return SyncState.fromJson(document.syncState);
     } catch (e) {
-      _logError('Error getting document sync state: $e');
+      _logError('Error getting document sync state for syncId "$syncId": $e');
       return SyncState.error;
     }
   }
 
-  /// Execute an operation with error state management
+  /// Execute an operation with error state management using syncId
   /// Marks documents as error state if max retries are exceeded
   Future<T> _executeWithErrorHandling<T>(
-    String documentId,
+    String syncId,
     String operation,
     Future<T> Function() operationFunction,
   ) async {
     try {
       // Check if document is already in error state and can be retried
-      if (_errorManager.isDocumentInError(documentId)) {
-        if (!_errorManager.canAttemptRecovery(documentId)) {
-          final error = _errorManager.getDocumentError(documentId)!;
+      if (_errorManager.isDocumentInError(syncId)) {
+        if (!_errorManager.canAttemptRecovery(syncId)) {
+          final error = _errorManager.getDocumentError(syncId)!;
           throw Exception(
               'Document in error state: ${error.getUserFriendlyMessage()}');
         }
         // Clear error state for retry attempt
-        _errorManager.clearDocumentError(documentId);
+        _errorManager.clearDocumentError(syncId);
       }
 
       // Execute the operation
       final result = await operationFunction();
 
       // Clear any previous error state on success
-      _errorManager.clearDocumentError(documentId);
+      _errorManager.clearDocumentError(syncId);
 
       return result;
     } catch (e) {
       // Increment retry count
-      _errorManager.incrementRetryCount(documentId);
-      final retryCount = _errorManager.getRetryCount(documentId);
+      _errorManager.incrementRetryCount(syncId);
+      final retryCount = _errorManager.getRetryCount(syncId);
 
       // Check if max retries exceeded
-      if (_errorManager.hasExceededMaxRetries(documentId)) {
+      if (_errorManager.hasExceededMaxRetries(syncId)) {
         _errorManager.markDocumentError(
-          documentId,
+          syncId,
           e.toString(),
           retryCount: retryCount,
           lastOperation: operation,
@@ -573,14 +804,14 @@ class DocumentSyncManager {
         );
 
         _logError(
-            'Document $documentId marked as error after $retryCount retries: $e');
+            'Document $syncId marked as error after $retryCount retries: $e');
       }
 
       rethrow;
     }
   }
 
-  /// Batch upload multiple documents to DynamoDB
+  /// Batch upload multiple documents to DynamoDB using syncId as primary key
   /// Uploads up to 25 documents in a single request for efficiency
   Future<void> batchUploadDocuments(List<Document> documents) async {
     if (documents.isEmpty) {
@@ -599,6 +830,12 @@ class DocumentSyncManager {
         // Validate and sanitize all documents in batch
         final documentsToUpload = <Document>[];
         for (final document in batch) {
+          // Ensure document has a sync identifier
+          if (document.syncId.isEmpty) {
+            throw Exception(
+                'Document must have a sync identifier for batch upload');
+          }
+
           _validationService.validateDocumentForUpload(document);
           final sanitizedDocument =
               _validationService.sanitizeDocument(document);
@@ -611,7 +848,7 @@ class DocumentSyncManager {
           const graphQLDocument = '''
             mutation CreateDocument(\$input: CreateDocumentInput!) {
               createDocument(input: \$input) {
-                id
+                syncId
                 userId
                 title
                 category
@@ -625,6 +862,7 @@ class DocumentSyncManager {
                 conflictId
                 deleted
                 deletedAt
+                contentHash
               }
             }
           ''';
@@ -633,6 +871,7 @@ class DocumentSyncManager {
             document: graphQLDocument,
             variables: {
               'input': {
+                'syncId': document.syncId,
                 'userId': document.userId,
                 'title': document.title,
                 'category': document.category,
@@ -646,17 +885,19 @@ class DocumentSyncManager {
                 'conflictId': document.conflictId,
                 'deleted': document.deleted,
                 'deletedAt': document.deletedAt?.format(),
+                'contentHash': document.contentHash,
               }
             },
             decodePath: 'createDocument',
             modelType: Document.classType,
+            authorizationMode: APIAuthorizationType.userPools,
           );
 
           final response = await Amplify.API.mutate(request: request).response;
 
           if (response.hasErrors) {
             throw Exception(
-                'Upload failed for ${document.id}: ${response.errors.map((e) => e.message).join(', ')}');
+                'Upload failed for ${document.syncId}: ${response.errors.map((e) => e.message).join(', ')}');
           }
 
           return response.data;
@@ -664,6 +905,22 @@ class DocumentSyncManager {
 
         // Wait for all uploads in this batch to complete
         await Future.wait(uploadFutures);
+
+        // Sync FileAttachments for all documents in this batch
+        for (final document in documentsToUpload) {
+          try {
+            _logInfo(
+                '🔄 Starting FileAttachment sync for batch document: ${document.syncId}');
+            await _fileAttachmentSyncManager
+                .syncFileAttachmentsForDocument(document.syncId);
+            _logInfo(
+                '✅ FileAttachment sync completed for batch document: ${document.syncId}');
+          } catch (e) {
+            _logWarning(
+                '⚠️ FileAttachment sync failed for batch document ${document.syncId}: $e');
+            // Continue with other documents even if FileAttachment sync fails
+          }
+        }
 
         _logInfo('Batch uploaded ${batch.length} documents');
       }
@@ -675,7 +932,7 @@ class DocumentSyncManager {
     }
   }
 
-  /// Update a document with delta sync - only send changed fields
+  /// Update a document with delta sync - only send changed fields using syncId
   /// More efficient than sending the entire document
   Future<void> updateDocumentDelta(
     Document document,
@@ -685,24 +942,30 @@ class DocumentSyncManager {
       // Validate document before update
       _validationService.validateDocumentForUpdate(document);
 
+      // Ensure document has a sync identifier
+      if (document.syncId == null || document.syncId!.isEmpty) {
+        throw Exception(
+            'Document must have a sync identifier for delta update');
+      }
+
       // Sanitize document input
       final sanitizedDocument = _validationService.sanitizeDocument(document);
 
-      // Fetch current version from DynamoDB
-      final remoteDocument = await downloadDocument(sanitizedDocument.id);
+      // Fetch current version from DynamoDB using syncId
+      final remoteDocument = await downloadDocument(sanitizedDocument.syncId!);
 
       // Check for version conflict
       if (remoteDocument.version != sanitizedDocument.version) {
         // Register the conflict with the conflict manager
         _conflictManager.detectConflict(
-          sanitizedDocument.id,
+          sanitizedDocument.syncId!,
           sanitizedDocument,
           remoteDocument,
         );
 
         throw VersionConflictException(
           message:
-              'Version conflict detected for document ${sanitizedDocument.id}',
+              'Version conflict detected for document ${sanitizedDocument.syncId}',
           localDocument: sanitizedDocument,
           remoteDocument: remoteDocument,
         );
@@ -710,7 +973,7 @@ class DocumentSyncManager {
 
       // Apply changed fields to the document
       var updatedDocument = sanitizedDocument.copyWith(
-        lastModified: TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
         version: sanitizedDocument.version + 1,
         syncState: SyncState.synced.toJson(),
       );
@@ -736,7 +999,7 @@ class DocumentSyncManager {
         final renewalDate = changedFields['renewalDate'];
         updatedDocument = updatedDocument.copyWith(
             renewalDate: renewalDate != null
-                ? TemporalDateTime.fromString(renewalDate)
+                ? amplify_core.TemporalDateTime.fromString(renewalDate)
                 : null);
       }
       if (changedFields.containsKey('filePaths')) {
@@ -747,11 +1010,11 @@ class DocumentSyncManager {
             updatedDocument.copyWith(filePaths: sanitizedFilePaths);
       }
 
-      // Use Amplify API to update document in DynamoDB via GraphQL
+      // Use Amplify API to update document in DynamoDB via GraphQL using syncId
       const graphQLDocument = '''
         mutation UpdateDocument(\$input: UpdateDocumentInput!) {
           updateDocument(input: \$input) {
-            id
+            syncId
             userId
             title
             category
@@ -765,6 +1028,7 @@ class DocumentSyncManager {
             conflictId
             deleted
             deletedAt
+            contentHash
           }
         }
       ''';
@@ -773,7 +1037,7 @@ class DocumentSyncManager {
         document: graphQLDocument,
         variables: {
           'input': {
-            'id': updatedDocument.id,
+            'syncId': updatedDocument.syncId,
             'userId': updatedDocument.userId,
             'title': updatedDocument.title,
             'category': updatedDocument.category,
@@ -787,10 +1051,12 @@ class DocumentSyncManager {
             'conflictId': updatedDocument.conflictId,
             'deleted': updatedDocument.deleted,
             'deletedAt': updatedDocument.deletedAt?.format(),
+            'contentHash': updatedDocument.contentHash,
           }
         },
         decodePath: 'updateDocument',
         modelType: Document.classType,
+        authorizationMode: APIAuthorizationType.userPools,
       );
 
       final response = await Amplify.API.mutate(request: request).response;
@@ -805,7 +1071,7 @@ class DocumentSyncManager {
       }
 
       _logInfo(
-          'Document updated with delta sync: ${sanitizedDocument.id}, fields: ${changedFields.keys.join(", ")}');
+          'Document updated with delta sync: ${sanitizedDocument.syncId}, fields: ${changedFields.keys.join(", ")}');
     } on VersionConflictException {
       rethrow;
     } catch (e) {

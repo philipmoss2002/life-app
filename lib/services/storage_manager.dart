@@ -162,7 +162,7 @@ class StorageManager {
       final validFilePaths = <String>{};
       for (final document in documents) {
         for (final filePath in document.filePaths) {
-          final s3Key = _generateS3Key(document.id.toString(), filePath);
+          final s3Key = _generateS3Key(document.syncId.toString(), filePath);
           validFilePaths.add(s3Key);
         }
       }

@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import '../models/Document.dart';
-import '../models/conflict.dart' as conflict_model;
+import '../models/Conflict.dart' as conflict_model;
 import '../models/sync_state.dart';
 import 'database_service.dart';
+import 'analytics_service.dart';
+import 'authentication_service.dart';
+import '../utils/sync_identifier_generator.dart';
 
 /// Types of conflicts that can occur during synchronization
 enum ConflictType {
@@ -25,6 +29,7 @@ enum ConflictResolution {
 class DocumentConflict {
   final String id;
   final String documentId;
+  final String? syncId; // Add sync identifier for tracking
   final Document localDocument;
   final Document remoteDocument;
   final ConflictType type;
@@ -35,6 +40,7 @@ class DocumentConflict {
   DocumentConflict({
     required this.id,
     required this.documentId,
+    this.syncId,
     required this.localDocument,
     required this.remoteDocument,
     required this.type,
@@ -46,6 +52,7 @@ class DocumentConflict {
   DocumentConflict copyWith({
     String? id,
     String? documentId,
+    String? syncId,
     Document? localDocument,
     Document? remoteDocument,
     ConflictType? type,
@@ -56,6 +63,7 @@ class DocumentConflict {
     return DocumentConflict(
       id: id ?? this.id,
       documentId: documentId ?? this.documentId,
+      syncId: syncId ?? this.syncId,
       localDocument: localDocument ?? this.localDocument,
       remoteDocument: remoteDocument ?? this.remoteDocument,
       type: type ?? this.type,
@@ -82,11 +90,19 @@ class ConflictResolutionService {
   ConflictResolutionService._internal();
 
   final DatabaseService _databaseService = DatabaseService.instance;
+  final AnalyticsService _analyticsService = AnalyticsService();
+  final AuthenticationService _authService = AuthenticationService();
   final Map<String, DocumentConflict> _activeConflicts = {};
   final StreamController<DocumentConflict> _conflictController =
       StreamController<DocumentConflict>.broadcast();
   final StreamController<conflict_model.Conflict> _conflictStreamController =
       StreamController<conflict_model.Conflict>.broadcast();
+
+  /// Get current user ID for conflict tracking
+  Future<String> _getCurrentUserId() async {
+    final user = await _authService.getCurrentUser();
+    return user?.id ?? 'unknown';
+  }
 
   /// Stream of detected conflicts
   Stream<DocumentConflict> get conflicts => _conflictController.stream;
@@ -102,11 +118,14 @@ class ConflictResolutionService {
     required Document remoteDocument,
     required ConflictType conflictType,
   }) async {
-    final conflictId = '${documentId}_${DateTime.now().millisecondsSinceEpoch}';
+    // Use sync identifier if available, otherwise fall back to document ID
+    final syncId = localDocument.syncId;
+    final conflictId = '${syncId}_${DateTime.now().millisecondsSinceEpoch}';
 
     final conflict = DocumentConflict(
       id: conflictId,
       documentId: documentId,
+      syncId: syncId,
       localDocument: localDocument,
       remoteDocument: remoteDocument,
       type: conflictType,
@@ -127,7 +146,7 @@ class ConflictResolutionService {
     _conflictController.add(conflict);
 
     safePrint(
-        'Conflict registered for document $documentId: ${conflictType.name}');
+        'Conflict registered for document $documentId (syncId: $syncId): ${conflictType.name}');
   }
 
   /// Get all active conflicts
@@ -136,10 +155,19 @@ class ConflictResolutionService {
   }
 
   /// Detect conflict between two document versions
-  conflict_model.Conflict? detectConflict(
-      Document localDoc, Document remoteDoc) {
+  /// Uses sync identifier as primary matching criterion
+  Future<conflict_model.Conflict?> detectConflict(
+      Document localDoc, Document remoteDoc) async {
+    // Validate that documents have matching sync identifiers if both are present
+    if (localDoc.syncId != remoteDoc.syncId) {
+      safePrint('Warning: Comparing documents with different sync identifiers: '
+          'local=${localDoc.syncId}, remote=${remoteDoc.syncId}');
+      // These are different documents, not a conflict
+      return null;
+    }
+
     // No conflict if documents are identical
-    if (localDoc.id == remoteDoc.id &&
+    if (localDoc.syncId == remoteDoc.syncId &&
         localDoc.version == remoteDoc.version &&
         localDoc.title == remoteDoc.title &&
         localDoc.lastModified == remoteDoc.lastModified) {
@@ -150,12 +178,15 @@ class ConflictResolutionService {
     if (localDoc.version == remoteDoc.version) {
       if (localDoc.title != remoteDoc.title ||
           localDoc.lastModified != remoteDoc.lastModified) {
+        final syncId = localDoc.syncId;
+        final userId = await _getCurrentUserId();
         final conflict = conflict_model.Conflict(
-          id: '${localDoc.id}_${DateTime.now().millisecondsSinceEpoch}',
-          documentId: localDoc.id,
-          localVersion: localDoc,
-          remoteVersion: remoteDoc,
-          type: conflict_model.ConflictType.documentModified,
+          userId: userId,
+          entityType: 'document',
+          entityId: localDoc.syncId,
+          localVersion: localDoc.toJson().toString(),
+          remoteVersion: remoteDoc.toJson().toString(),
+          detectedAt: amplify_core.TemporalDateTime.now(),
         );
 
         // Emit to stream
@@ -164,13 +195,21 @@ class ConflictResolutionService {
         // Also add to active conflicts for tracking
         final documentConflict = DocumentConflict(
           id: conflict.id,
-          documentId: conflict.documentId,
-          localDocument: conflict.localVersion,
-          remoteDocument: conflict.remoteVersion,
+          documentId: conflict.entityId,
+          syncId: syncId,
+          localDocument: localDoc,
+          remoteDocument: remoteDoc,
           type: ConflictType.versionMismatch,
-          detectedAt: conflict.detectedAt,
+          detectedAt: DateTime.now(),
         );
         _activeConflicts[conflict.id] = documentConflict;
+
+        // Track conflict detection in analytics
+        _analyticsService.trackConflictDetected(
+          documentId: conflict.entityId,
+          syncId: syncId,
+          conflictType: 'version_mismatch',
+        );
 
         return conflict;
       }
@@ -182,12 +221,15 @@ class ConflictResolutionService {
 
     if (remoteTime.isAfter(localTime) &&
         remoteDoc.version <= localDoc.version) {
+      final syncId = localDoc.syncId;
+      final userId = await _getCurrentUserId();
       final conflict = conflict_model.Conflict(
-        id: '${localDoc.id}_${DateTime.now().millisecondsSinceEpoch}',
-        documentId: localDoc.id,
-        localVersion: localDoc,
-        remoteVersion: remoteDoc,
-        type: conflict_model.ConflictType.documentModified,
+        userId: userId,
+        entityType: 'document',
+        entityId: localDoc.syncId,
+        localVersion: localDoc.toJson().toString(),
+        remoteVersion: remoteDoc.toJson().toString(),
+        detectedAt: amplify_core.TemporalDateTime.now(),
       );
 
       // Emit to stream
@@ -196,13 +238,21 @@ class ConflictResolutionService {
       // Also add to active conflicts for tracking
       final documentConflict = DocumentConflict(
         id: conflict.id,
-        documentId: conflict.documentId,
-        localDocument: conflict.localVersion,
-        remoteDocument: conflict.remoteVersion,
+        documentId: conflict.entityId,
+        syncId: syncId,
+        localDocument: localDoc,
+        remoteDocument: remoteDoc,
         type: ConflictType.concurrentModification,
-        detectedAt: conflict.detectedAt,
+        detectedAt: DateTime.now(),
       );
       _activeConflicts[conflict.id] = documentConflict;
+
+      // Track conflict detection in analytics
+      _analyticsService.trackConflictDetected(
+        documentId: conflict.entityId,
+        syncId: syncId,
+        conflictType: 'concurrent_modification',
+      );
 
       return conflict;
     }
@@ -211,6 +261,7 @@ class ConflictResolutionService {
   }
 
   /// Merge two document versions
+  /// Preserves the original document's sync identifier
   Future<Document> mergeDocuments(Document localDoc, Document remoteDoc) async {
     // Use the more recent title
     final useLocalTitle = localDoc.lastModified
@@ -255,31 +306,63 @@ class ConflictResolutionService {
     );
   }
 
+  /// Create a conflict copy with a new sync identifier
+  /// Used when user wants to keep both versions of a conflicted document
+  Future<Document> createConflictCopy(Document document) async {
+    // Generate a new sync identifier for the conflict copy
+    final newSyncId = SyncIdentifierGenerator.generate();
+
+    // Create a copy with the new sync identifier and modified title
+    final conflictCopy = document.copyWith(
+      title: '${document.title} (Conflict Copy)',
+      version: 1, // Reset version for new document
+      createdAt: amplify_core.TemporalDateTime.now(),
+      lastModified: amplify_core.TemporalDateTime.now(),
+      syncState: SyncState.pending.toJson(),
+      conflictId: null,
+    );
+
+    // Save the conflict copy to the database
+    await _databaseService.createDocument(conflictCopy);
+
+    safePrint(
+        'Created conflict copy with new syncId: $newSyncId for original syncId: ${document.syncId}');
+
+    return conflictCopy;
+  }
+
   /// Resolve conflict using the new Conflict model
+  /// Preserves sync identifier in resolved document
   Future<Document> resolveConflictNew(
       conflict_model.Conflict conflict, ConflictResolution resolution) async {
     // Remove from active conflicts first
     _activeConflicts
-        .removeWhere((key, value) => value.documentId == conflict.documentId);
+        .removeWhere((key, value) => value.documentId == conflict.entityId);
+
+    // Parse the document versions from JSON strings
+    final localDoc = Document.fromJson(
+        Map<String, dynamic>.from(jsonDecode(conflict.localVersion)));
+    final remoteDoc = Document.fromJson(
+        Map<String, dynamic>.from(jsonDecode(conflict.remoteVersion)));
 
     Document resolvedDoc;
 
     switch (resolution) {
       case ConflictResolution.keepLocal:
-        resolvedDoc = conflict.localVersion.copyWith(
+        resolvedDoc = localDoc.copyWith(
           syncState: SyncState.pending.toJson(),
           conflictId: null,
         );
         break;
       case ConflictResolution.keepRemote:
-        resolvedDoc = conflict.remoteVersion.copyWith(
+        // Preserve the local document's sync identifier when keeping remote
+        resolvedDoc = remoteDoc.copyWith(
           syncState: SyncState.synced.toJson(),
           conflictId: null,
         );
         break;
       case ConflictResolution.merge:
-        resolvedDoc =
-            await mergeDocuments(conflict.localVersion, conflict.remoteVersion);
+        resolvedDoc = await mergeDocuments(localDoc, remoteDoc);
         break;
     }
 
@@ -301,7 +384,22 @@ class ConflictResolutionService {
         .toList();
   }
 
+  /// Get conflicts for a specific sync identifier
+  List<DocumentConflict> getConflictsForSyncId(String syncId) {
+    return _activeConflicts.values
+        .where((c) => c.syncId == syncId && !c.isResolved)
+        .toList();
+  }
+
+  /// Get conflict by sync identifier (returns the first match)
+  DocumentConflict? getConflictBySyncId(String syncId) {
+    return _activeConflicts.values
+        .where((c) => c.syncId == syncId && !c.isResolved)
+        .firstOrNull;
+  }
+
   /// Resolve a conflict using the specified strategy
+  /// Preserves sync identifier in resolved document
   Future<Document> resolveConflict(
     String conflictId,
     ConflictResolutionStrategy strategy,
@@ -325,7 +423,7 @@ class ConflictResolutionService {
         resolvedDocument = _resolveKeepRemote(conflict);
         break;
       case ConflictResolutionStrategy.merge:
-        resolvedDocument = _resolveMerge(conflict);
+        resolvedDocument = await _resolveMerge(conflict);
         break;
       case ConflictResolutionStrategy.manual:
         throw Exception('Manual resolution requires explicit document');
@@ -338,22 +436,31 @@ class ConflictResolutionService {
     );
     _activeConflicts[conflictId] = resolvedConflict;
 
+    // Track conflict resolution in analytics
+    _analyticsService.trackConflictResolved(
+      conflictId: conflictId,
+      resolutionStrategy: strategy.name,
+    );
+
     // Update document with resolved version
     final finalDocument = resolvedDocument.copyWith(
       syncState: SyncState.synced.toJson(),
       conflictId: null,
       version: resolvedDocument.version + 1,
-      lastModified: TemporalDateTime.now(),
+      lastModified: amplify_core.TemporalDateTime.now(),
     );
 
     await _databaseService.updateDocument(finalDocument);
 
+    final syncIdInfo =
+        conflict.syncId != null ? ' (syncId: ${conflict.syncId})' : '';
     safePrint(
-        'Conflict resolved for document ${conflict.documentId} using ${strategy.name}');
+        'Conflict resolved for document ${conflict.documentId}$syncIdInfo using ${strategy.name}');
     return finalDocument;
   }
 
   /// Resolve conflict manually with a provided document
+  /// Preserves sync identifier in resolved document
   Future<Document> resolveConflictManually(
     String conflictId,
     Document resolvedDocument,
@@ -367,6 +474,14 @@ class ConflictResolutionService {
       throw Exception('Conflict already resolved: $conflictId');
     }
 
+    // Ensure the resolved document preserves the original sync identifier
+    final documentWithSyncId = resolvedDocument.copyWith(
+      syncState: SyncState.synced.toJson(),
+      conflictId: null,
+      version: resolvedDocument.version + 1,
+      lastModified: amplify_core.TemporalDateTime.now(),
+    );
+
     // Mark conflict as resolved
     final resolvedConflict = conflict.copyWith(
       isResolved: true,
@@ -375,11 +490,9 @@ class ConflictResolutionService {
     _activeConflicts[conflictId] = resolvedConflict;
 
     // Update document with resolved version
-    final finalDocument = resolvedDocument.copyWith(
-      syncState: SyncState.synced.toJson(),
-      conflictId: null,
-      version: resolvedDocument.version + 1,
-      lastModified: TemporalDateTime.now(),
+    final finalDocument = documentWithSyncId.copyWith(
+      version: documentWithSyncId.version + 1,
+      lastModified: amplify_core.TemporalDateTime.now(),
     );
 
     await _databaseService.updateDocument(finalDocument);
@@ -448,65 +561,16 @@ class ConflictResolutionService {
   }
 
   Document _resolveKeepRemote(DocumentConflict conflict) {
-    return conflict.remoteDocument;
-  }
-
-  Document _resolveMerge(DocumentConflict conflict) {
-    final local = conflict.localDocument;
-    final remote = conflict.remoteDocument;
-
-    // Simple merge strategy - prefer non-empty values and most recent timestamps
-    return local.copyWith(
-      title: _mergeStringField(
-          local.title, remote.title, local.lastModified, remote.lastModified),
-      category: _mergeStringField(local.category, remote.category,
-          local.lastModified, remote.lastModified),
-      notes: _mergeStringField(local.notes ?? '', remote.notes ?? '',
-          local.lastModified, remote.lastModified),
-      renewalDate: _mergeDateField(local.renewalDate, remote.renewalDate,
-          local.lastModified, remote.lastModified),
-      filePaths: _mergeFilePaths(local.filePaths, remote.filePaths),
-      version: math.max(local.version, remote.version),
-      lastModified: local.lastModified
-              .getDateTimeInUtc()
-              .isAfter(remote.lastModified.getDateTimeInUtc())
-          ? local.lastModified
-          : remote.lastModified,
+    // Preserve the local document's sync identifier when keeping remote
+    return conflict.remoteDocument.copyWith(
+      syncState: SyncState.synced.toJson(),
+      conflictId: null,
     );
   }
 
-  String _mergeStringField(String local, String remote,
-      TemporalDateTime localTime, TemporalDateTime remoteTime) {
-    if (local.isEmpty && remote.isNotEmpty) return remote;
-    if (remote.isEmpty && local.isNotEmpty) return local;
-
-    // If both have values, prefer the one with more recent modification
-    return localTime.getDateTimeInUtc().isAfter(remoteTime.getDateTimeInUtc())
-        ? local
-        : remote;
-  }
-
-  TemporalDateTime? _mergeDateField(
-      TemporalDateTime? local,
-      TemporalDateTime? remote,
-      TemporalDateTime localTime,
-      TemporalDateTime remoteTime) {
-    if (local == null && remote != null) return remote;
-    if (remote == null && local != null) return local;
-    if (local == null && remote == null) return null;
-
-    // If both have values, prefer the one with more recent modification
-    return localTime.getDateTimeInUtc().isAfter(remoteTime.getDateTimeInUtc())
-        ? local
-        : remote;
-  }
-
-  List<String> _mergeFilePaths(List<String> local, List<String> remote) {
-    // Merge file paths by combining unique paths
-    final merged = <String>{};
-    merged.addAll(local);
-    merged.addAll(remote);
-    return merged.toList();
+  Future<Document> _resolveMerge(DocumentConflict conflict) async {
+    return await mergeDocuments(
+        conflict.localDocument, conflict.remoteDocument);
   }
 
   /// Clear all active conflicts (for testing)

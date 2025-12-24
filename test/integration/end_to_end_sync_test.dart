@@ -38,7 +38,7 @@ void main() {
     });
 
     tearDown(() async {
-      await cloudSyncService.dispose();
+      cloudSyncService.dispose();
     });
 
     /// Test complete document sync workflow
@@ -47,7 +47,8 @@ void main() {
         () async {
       // Generate test data
       final userId = faker.guid.guid();
-      final testDocument = TestHelpers.createRandomDocument(
+      final testDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'End-to-End Test Document',
         category: 'Insurance',
@@ -55,12 +56,12 @@ void main() {
 
       try {
         // Step 1: Create document locally
-        await databaseService.createDocument(testDocument);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
 
         // Verify document exists locally
         final allDocuments = await databaseService.getAllDocuments();
         final localDocument = allDocuments.firstWhere(
-          (doc) => doc.id == testDocument.id,
+          (doc) => doc.syncId == testDocument.syncId,
           orElse: () => throw Exception('Document not found'),
         );
         expect(localDocument, isNotNull);
@@ -84,10 +85,10 @@ void main() {
 
         // Step 5: Simulate download on another device
         final downloadedDocument =
-            await documentSyncManager.downloadDocument(testDocument.id!);
+            await documentSyncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument.syncId!);
 
         // Step 6: Verify downloaded document matches original
-        expect(downloadedDocument.id, equals(testDocument.id));
+        expect(downloadedDocument.syncId, equals(testDocument.syncId));
         expect(downloadedDocument.userId, equals(testDocument.userId));
         expect(downloadedDocument.title, equals(testDocument.title));
         expect(downloadedDocument.category, equals(testDocument.category));
@@ -99,11 +100,11 @@ void main() {
           lastModified: amplify_core.TemporalDateTime.now(),
         );
 
-        await documentSyncManager.updateDocument(updatedDocument);
+        await documentSyncManager.updateDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), updatedDocument);
 
         // Verify update was synced
         final finalDocument =
-            await documentSyncManager.downloadDocument(testDocument.id!);
+            await documentSyncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument.syncId!);
         expect(finalDocument.title, equals('Updated End-to-End Test Document'));
         expect(finalDocument.version, equals(testDocument.version + 1));
       } catch (e) {
@@ -126,7 +127,8 @@ void main() {
     test('File attachment synchronization workflow', () async {
       // Generate test data
       final userId = faker.guid.guid();
-      final testDocument = TestHelpers.createRandomDocument(
+      final testDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Document with Attachments',
         category: 'Medical',
@@ -145,11 +147,11 @@ void main() {
 
       try {
         // Step 1: Create document with file attachment locally
-        await databaseService.createDocument(testDocument);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
 
         // Step 2: Upload file attachment
         final s3Key =
-            await fileSyncManager.uploadFile(testFilePath, testDocument.id!);
+            await fileSyncManager.uploadFile(testFilePath, testDocument.syncId!);
         expect(s3Key, isNotEmpty);
 
         // Step 3: Update file attachment with S3 key
@@ -160,7 +162,7 @@ void main() {
 
         // Step 4: Verify file can be downloaded
         final downloadedFilePath =
-            await fileSyncManager.downloadFile(s3Key, testDocument.id!);
+            await fileSyncManager.downloadFile(s3Key, testDocument.syncId!);
         expect(downloadedFilePath, isNotEmpty);
 
         // Step 5: Verify file deletion
@@ -168,7 +170,7 @@ void main() {
 
         // Verify file is no longer accessible
         expect(
-          () => fileSyncManager.downloadFile(s3Key, testDocument.id!),
+          () => fileSyncManager.downloadFile(s3Key, testDocument.syncId!),
           throwsException,
         );
       } catch (e) {
@@ -193,12 +195,14 @@ void main() {
     test('Multi-device synchronization scenario', () async {
       // Generate test data for two devices
       final userId = faker.guid.guid();
-      final device1Document = TestHelpers.createRandomDocument(
+      final device1Document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Device 1 Document',
         category: 'Financial',
       );
-      final device2Document = TestHelpers.createRandomDocument(
+      final device2Document = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Device 2 Document',
         category: 'Legal',
@@ -206,12 +210,12 @@ void main() {
 
       try {
         // Simulate Device 1: Create and upload document
-        await databaseService.createDocument(device1Document);
-        await documentSyncManager.uploadDocument(device1Document);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), device1Document);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), device1Document);
 
         // Simulate Device 2: Create and upload different document
-        await databaseService.createDocument(device2Document);
-        await documentSyncManager.uploadDocument(device2Document);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), device2Document);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), device2Document);
 
         // Simulate Device 1: Fetch all documents (should see both)
         final device1Documents =
@@ -236,11 +240,11 @@ void main() {
             lastModified: amplify_core.TemporalDateTime.now(),
           );
 
-          await documentSyncManager.updateDocument(documentToUpdate);
+          await documentSyncManager.updateDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), documentToUpdate);
 
           // Simulate Device 2: Fetch updated document
           final updatedDocument =
-              await documentSyncManager.downloadDocument(documentToUpdate.id!);
+              await documentSyncManager.downloadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), documentToUpdate.id!);
           expect(updatedDocument.title, equals('Updated from Device 1'));
           expect(updatedDocument.version,
               equals(device1Documents.first.version + 1));
@@ -269,7 +273,8 @@ void main() {
       final batchSize = 10;
       final testDocuments = List.generate(
         batchSize,
-        (index) => TestHelpers.createRandomDocument(
+        (index) => TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
           userId: userId,
           title: 'Batch Document $index',
           category: 'Insurance',
@@ -279,7 +284,7 @@ void main() {
       try {
         // Step 1: Create all documents locally
         for (final document in testDocuments) {
-          await databaseService.createDocument(document);
+          await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), document);
         }
 
         // Step 2: Batch upload all documents
@@ -302,7 +307,8 @@ void main() {
         // Step 4: Test batch operations with partial failures
         final mixedBatch = [
           ...testDocuments.take(3), // Valid documents
-          TestHelpers.createRandomDocument(userId: ''), // Invalid document
+          TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+      userId: ''), // Invalid document
         ];
 
         // This should handle partial failures gracefully
@@ -330,7 +336,8 @@ void main() {
     test('Sync error handling and recovery workflow', () async {
       // Generate test data
       final userId = faker.guid.guid();
-      final testDocument = TestHelpers.createRandomDocument(
+      final testDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Error Recovery Test Document',
         category: 'Other',
@@ -338,7 +345,7 @@ void main() {
 
       try {
         // Step 1: Create document locally
-        await databaseService.createDocument(testDocument);
+        await databaseService.createDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
 
         // Step 2: Attempt sync (will fail without Amplify)
         await cloudSyncService.queueDocumentSync(
@@ -381,7 +388,8 @@ void main() {
     test('Sync with authentication state changes', () async {
       // Generate test data
       final userId = faker.guid.guid();
-      final testDocument = TestHelpers.createRandomDocument(
+      final testDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Auth State Test Document',
         category: 'Personal',
@@ -389,7 +397,7 @@ void main() {
 
       try {
         // Step 1: Verify authentication is required for sync
-        await documentSyncManager.uploadDocument(testDocument);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), testDocument);
 
         // This should fail due to authentication requirements
         fail('Upload should have failed due to authentication requirements');
@@ -428,14 +436,15 @@ void main() {
       final userId = faker.guid.guid();
 
       // Test 1: Valid document should sync successfully
-      final validDocument = TestHelpers.createRandomDocument(
+      final validDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'Valid Document',
         category: 'Insurance',
       );
 
       try {
-        await documentSyncManager.uploadDocument(validDocument);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), validDocument);
         // Should succeed (or fail due to Amplify config, not validation)
       } catch (e) {
         expect(
@@ -451,14 +460,12 @@ void main() {
       }
 
       // Test 2: Invalid document should fail validation
-      final invalidDocument = TestHelpers.createRandomDocument(
-        userId: '', // Invalid: empty userId
-        title: '', // Invalid: empty title
-        category: 'InvalidCategory', // Invalid: not in allowed categories
-      );
+      final invalidDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+        userId: '', // Inval        title: '', // Inval        category: 'InvalidCategory', // Inval      );
 
       try {
-        await documentSyncManager.uploadDocument(invalidDocument);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), invalidDocument);
         fail('Invalid document should have failed validation');
       } catch (e) {
         expect(
@@ -476,14 +483,15 @@ void main() {
       }
 
       // Test 3: Document with oversized fields should fail validation
-      final oversizedDocument = TestHelpers.createRandomDocument(
+      final oversizedDocument = TestHelpers.createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
         userId: userId,
         title: 'a' * 1000, // Too long
         category: 'Insurance',
       );
 
       try {
-        await documentSyncManager.uploadDocument(oversizedDocument);
+        await documentSyncManager.uploadDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), oversizedDocument);
         fail('Oversized document should have failed validation');
       } catch (e) {
         expect(

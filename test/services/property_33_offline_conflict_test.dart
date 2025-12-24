@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 // Standalone test for Property 33: Offline Conflict Handling
 // This test validates that offline operations preserve all necessary data for conflict detection
 
@@ -11,7 +12,7 @@ class TestDocument {
   final int version;
   final DateTime lastModified;
 
-  TestDocument({
+  TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), {,
     required this.id,
     required this.userId,
     required this.title,
@@ -30,9 +31,9 @@ class TestDocument {
   }
 
   static TestDocument fromJson(Map<String, dynamic> json) {
-    return TestDocument(
-      id: json['id'],
-      userId: json['userId'],
+    return TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+            userId: json['userId'],
       title: json['title'],
       version: json['version'],
       lastModified: DateTime.parse(json['lastModified']),
@@ -68,8 +69,7 @@ class TestOfflineQueue {
     int priority = 0,
   }) {
     final operation = TestQueuedOperation(
-      id: '${type}_${documentId}_${DateTime.now().millisecondsSinceEpoch}',
-      documentId: documentId,
+            documentId: documentId,
       type: type,
       queuedAt: DateTime.now(),
       operationData: operationData,
@@ -86,7 +86,7 @@ class TestOfflineQueue {
     });
   }
 
-  List<TestQueuedOperation> getOperationsForDocument(String documentId) {
+  List<TestQueuedOperation> getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), String documentId) {,
     return _operations.where((op) => op.documentId == documentId).toList();
   }
 
@@ -115,9 +115,9 @@ void main() {
         final baseVersion = random.nextInt(10) + 1;
 
         // Create a document that will be queued for update (simulating offline modification)
-        final localDocument = TestDocument(
-          id: documentId,
-          userId: 'test_user_${random.nextInt(100)}',
+        final localDocument = TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test_user_${random.nextInt(100)}',
           title: 'Local Version $scenario',
           version: baseVersion,
           lastModified:
@@ -133,14 +133,14 @@ void main() {
         );
 
         // Verify the operation was queued
-        final queuedOperations = queue.getOperationsForDocument(documentId);
+        final queuedOperations = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
         expect(queuedOperations.length, equals(1));
         expect(queuedOperations.first.type, equals('update'));
 
         // Verify the operation contains the expected document data
         final queuedDocument = TestDocument.fromJson(
             queuedOperations.first.operationData['document']);
-        expect(queuedDocument.id, equals(documentId));
+        expect(queuedDocument.syncId, equals(documentId));
         expect(queuedDocument.version, equals(baseVersion));
         expect(queuedDocument.title, equals('Local Version $scenario'));
       }
@@ -157,7 +157,7 @@ void main() {
       // Test that operations maintain version information for conflict detection
       for (int scenario = 0; scenario < 5; scenario++) {
         final documentId = 'conflict_doc_$scenario';
-        final operations = queue.getOperationsForDocument(documentId);
+        final operations = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId);
 
         expect(operations.length, equals(1));
         final operation = operations.first;
@@ -166,7 +166,7 @@ void main() {
 
         // Verify version information is preserved (essential for conflict detection)
         expect(document.version, greaterThan(0));
-        expect(document.id, equals(documentId));
+        expect(document.syncId, equals(documentId));
         expect(document.lastModified, isNotNull);
       }
 
@@ -178,7 +178,7 @@ void main() {
       final allOperations = <TestQueuedOperation>[];
       for (int scenario = 0; scenario < 5; scenario++) {
         final documentId = 'conflict_doc_$scenario';
-        allOperations.addAll(queue.getOperationsForDocument(documentId));
+        allOperations.addAll(queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId));
       }
 
       for (final operation in allOperations) {
@@ -191,7 +191,7 @@ void main() {
         // Essential fields for conflict detection must be present
         expect(document.version, isA<int>());
         expect(document.lastModified, isNotNull);
-        expect(document.id, isNotNull);
+        expect(document.syncId, isNotNull);
         expect(document.userId, isNotEmpty);
 
         // Operation metadata must be preserved
@@ -205,9 +205,9 @@ void main() {
       final conflictDocId = 'conflict_test_doc';
 
       // Local version (queued while offline)
-      final localDoc = TestDocument(
-        id: conflictDocId,
-        userId: 'test_user',
+      final localDoc = TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'test_user',
         title: 'Local Changes',
         version: 5,
         lastModified: DateTime.now().subtract(Duration(minutes: 10)),
@@ -220,16 +220,16 @@ void main() {
       );
 
       // Simulate remote version (what would be found when processing queue online)
-      final remoteDoc = TestDocument(
-        id: conflictDocId,
-        userId: 'test_user',
+      final remoteDoc = TestDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: 'test_user',
         title: 'Remote Changes',
         version: 6, // Different version - conflict!
         lastModified: DateTime.now().subtract(Duration(minutes: 5)),
       );
 
       // Verify that both versions have all necessary data for conflict resolution
-      final queuedOp = queue.getOperationsForDocument(conflictDocId).first;
+      final queuedOp = queue.getOperationsForDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), conflictDocId).first;,
       final queuedDoc =
           TestDocument.fromJson(queuedOp.operationData['document']);
 
@@ -243,7 +243,7 @@ void main() {
       expect(queuedDoc.userId, equals(remoteDoc.userId));
 
       // Both have document identification
-      expect(queuedDoc.id, equals(remoteDoc.id));
+      expect(queuedDoc.id, equals(remoteDoc.syncId));
 
       // This validates that the offline queue preserves all data needed for conflict detection
       // When the queue is processed online, the system can:

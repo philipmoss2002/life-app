@@ -2,6 +2,8 @@ import '../models/Document.dart';
 import '../constants/document_categories.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+
 /// Exception thrown when document validation fails
 class DocumentValidationException implements Exception {
   final String message;
@@ -92,7 +94,7 @@ class DocumentValidationService {
     final errors = <String>[];
 
     // ID is required for updates
-    if (isUpdate && document.id.isEmpty) {
+    if (isUpdate && document.syncId.isEmpty) {
       errors.add('Document ID is required for updates');
     }
 
@@ -166,7 +168,7 @@ class DocumentValidationService {
 
     // Validate dates are not in the future (except renewalDate)
     try {
-      final now = TemporalDateTime.now();
+      final now = amplify_core.TemporalDateTime.now();
       if (document.createdAt.compareTo(now) > 0) {
         errors.add('Created date cannot be in the future');
       }
@@ -270,7 +272,7 @@ class DocumentValidationService {
     // Validate renewal date is in the future (if present)
     final renewalDate = document.renewalDate;
     if (renewalDate != null) {
-      final now = TemporalDateTime.now();
+      final now = amplify_core.TemporalDateTime.now();
       if (renewalDate.compareTo(now) <= 0) {
         errors.add('Renewal date must be in the future');
       }
@@ -348,7 +350,6 @@ class DocumentValidationService {
 
     // Check required fields exist
     final requiredFields = [
-      'id',
       'userId',
       'title',
       'category',
@@ -390,7 +391,7 @@ class DocumentValidationService {
     for (final field in dateFields) {
       if (data.containsKey(field) && data[field] != null) {
         try {
-          TemporalDateTime.fromString(data[field]);
+          amplify_core.TemporalDateTime.fromString(data[field]);
         } catch (e) {
           errors.add('Invalid date format for field: $field');
         }

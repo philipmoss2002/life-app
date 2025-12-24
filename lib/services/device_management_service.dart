@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
-import '../models/device.dart';
+import '../models/Device.dart';
+import 'authentication_service.dart';
 
 /// Service for managing connected devices
 class DeviceManagementService {
@@ -9,6 +10,7 @@ class DeviceManagementService {
   final List<Device> _mockDevices = [];
   String? _currentDeviceId;
   bool _initialized = false;
+  final AuthenticationService _authService = AuthenticationService();
 
   /// Get all devices for the current user
   Future<List<Device>> getDevices() async {
@@ -25,7 +27,7 @@ class DeviceManagementService {
   Future<Device> registerDevice(String userId) async {
     final deviceInfo = await _getDeviceInfo();
     final device = Device(
-      id: deviceInfo['id']!,
+      userId: userId, // Add userId parameter
       deviceName: deviceInfo['name']!,
       deviceType: deviceInfo['type']!,
       lastSyncTime: amplify_core.TemporalDateTime.now(),
@@ -97,11 +99,15 @@ class DeviceManagementService {
     final currentDevice = await _getDeviceInfo();
     _currentDeviceId = currentDevice['id'];
 
+    // Get current user for userId
+    final currentUser = await _authService.getCurrentUser();
+    final userId = currentUser?.id ?? 'anonymous';
+
     final now = amplify_core.TemporalDateTime.now();
 
     // Add current device
     _mockDevices.add(Device(
-      id: currentDevice['id']!,
+      userId: userId,
       deviceName: currentDevice['name']!,
       deviceType: currentDevice['type']!,
       lastSyncTime: now,
@@ -112,7 +118,7 @@ class DeviceManagementService {
 
     // Add some mock devices for demonstration
     _mockDevices.add(Device(
-      id: 'device_2',
+      userId: userId,
       deviceName: 'Samsung Galaxy S21',
       deviceType: 'phone',
       lastSyncTime: amplify_core.TemporalDateTime.fromString(
@@ -123,7 +129,7 @@ class DeviceManagementService {
     ));
 
     _mockDevices.add(Device(
-      id: 'device_3',
+      userId: userId,
       deviceName: 'iPad Pro',
       deviceType: 'tablet',
       lastSyncTime: amplify_core.TemporalDateTime.fromString(
@@ -135,7 +141,7 @@ class DeviceManagementService {
 
     // Add an inactive device (hasn't synced in 90+ days)
     _mockDevices.add(Device(
-      id: 'device_4',
+      userId: userId,
       deviceName: 'Old Phone',
       deviceType: 'phone',
       lastSyncTime: amplify_core.TemporalDateTime.fromString(

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'dart:math' as math;
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 import 'document_sync_manager.dart';
+import 'sync_identifier_service.dart';
 import 'simple_file_sync_manager.dart';
 import 'database_service.dart';
 import 'conflict_resolution_service.dart';
@@ -15,6 +17,7 @@ import 'conflict_resolution_service.dart';
 class QueuedSyncOperation {
   final String id;
   final String documentId;
+  final String? syncId; // Universal sync identifier for document matching
   final QueuedOperationType type;
   final DateTime queuedAt;
   final int retryCount;
@@ -24,6 +27,7 @@ class QueuedSyncOperation {
   QueuedSyncOperation({
     required this.id,
     required this.documentId,
+    this.syncId,
     required this.type,
     required this.queuedAt,
     this.retryCount = 0,
@@ -34,6 +38,7 @@ class QueuedSyncOperation {
   QueuedSyncOperation copyWith({
     String? id,
     String? documentId,
+    String? syncId,
     QueuedOperationType? type,
     DateTime? queuedAt,
     int? retryCount,
@@ -43,6 +48,7 @@ class QueuedSyncOperation {
     return QueuedSyncOperation(
       id: id ?? this.id,
       documentId: documentId ?? this.documentId,
+      syncId: syncId ?? this.syncId,
       type: type ?? this.type,
       queuedAt: queuedAt ?? this.queuedAt,
       retryCount: retryCount ?? this.retryCount,
@@ -55,6 +61,7 @@ class QueuedSyncOperation {
     return {
       'id': id,
       'documentId': documentId,
+      'syncId': syncId,
       'type': type.name,
       'queuedAt': queuedAt.toIso8601String(),
       'retryCount': retryCount,
@@ -65,8 +72,9 @@ class QueuedSyncOperation {
 
   static QueuedSyncOperation fromJson(Map<String, dynamic> json) {
     return QueuedSyncOperation(
-      id: json['id'],
+      id: json['id'] ?? '',
       documentId: json['documentId'],
+      syncId: json['syncId'],
       type: QueuedOperationType.values.firstWhere(
         (e) => e.name == json['type'],
         orElse: () => QueuedOperationType.upload,
@@ -126,13 +134,19 @@ class OfflineSyncQueueService {
   /// Add an operation to the sync queue
   Future<void> queueOperation({
     required String documentId,
+    String? syncId,
     required QueuedOperationType type,
     required Map<String, dynamic> operationData,
     int priority = 0,
   }) async {
+    final operationId = syncId != null
+        ? '${type.name}_${syncId}_${DateTime.now().millisecondsSinceEpoch}'
+        : '${type.name}_${documentId}_${DateTime.now().millisecondsSinceEpoch}';
+
     final operation = QueuedSyncOperation(
-      id: '${type.name}_${documentId}_${DateTime.now().millisecondsSinceEpoch}',
+      id: operationId,
       documentId: documentId,
+      syncId: syncId,
       type: type,
       queuedAt: DateTime.now(),
       operationData: operationData,
@@ -167,11 +181,11 @@ class OfflineSyncQueueService {
       type: QueueEventType.operationQueued,
       operationId: operation.id,
       message:
-          'Operation queued: ${operation.type.name} for document ${operation.documentId}',
+          'Operation queued: ${operation.type.name} for document ${operation.syncId ?? operation.documentId}',
     ));
 
     safePrint(
-        'Queued ${operation.type.name} operation for document ${operation.documentId}');
+        'Queued ${operation.type.name} operation for document ${operation.syncId ?? operation.documentId}');
   }
 
   /// Process all queued operations in order with enhanced failure handling
@@ -424,21 +438,33 @@ class OfflineSyncQueueService {
     safePrint('Sync queue cleared');
   }
 
-  /// Get operations for a specific document
-  List<QueuedSyncOperation> getOperationsForDocument(String documentId) {
+  /// Get operations for a specific document by sync identifier or document ID
+  List<QueuedSyncOperation> getOperationsForDocument(String documentId,
+      {String? syncId}) {
+    if (syncId != null) {
+      return _queue.where((op) => op.syncId == syncId).toList();
+    }
     return _queue.where((op) => op.documentId == documentId).toList();
   }
 
-  /// Remove operations for a specific document
-  Future<void> removeOperationsForDocument(String documentId) async {
+  /// Remove operations for a specific document by sync identifier or document ID
+  Future<void> removeOperationsForDocument(String documentId,
+      {String? syncId}) async {
     final removedCount = _queue.length;
-    _queue.removeWhere((op) => op.documentId == documentId);
+
+    if (syncId != null) {
+      _queue.removeWhere((op) => op.syncId == syncId);
+    } else {
+      _queue.removeWhere((op) => op.documentId == documentId);
+    }
+
     final finalCount = _queue.length;
 
     if (removedCount != finalCount) {
       await _persistQueue();
+      final identifier = syncId ?? documentId;
       safePrint(
-          'Removed ${removedCount - finalCount} operations for document $documentId');
+          'Removed ${removedCount - finalCount} operations for document $identifier');
     }
   }
 
@@ -524,21 +550,22 @@ class OfflineSyncQueueService {
     try {
       final documents = await _databaseService.getAllDocuments();
       final document = documents.firstWhere(
-        (doc) => doc.id.toString() == documentId,
+        (doc) => doc.syncId == documentId,
         orElse: () => Document(
+          syncId: SyncIdentifierService.generateValidated(),
           userId: '',
           title: '',
           category: '',
           filePaths: [],
-          createdAt: TemporalDateTime.now(),
-          lastModified: TemporalDateTime.now(),
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
           version: 0,
           syncState: SyncState.notSynced.toJson(),
         ),
       );
 
       if (document.title.isNotEmpty) {
-        await _databaseService.deleteDocument(int.parse(document.id));
+        await _databaseService.deleteDocument(int.parse(document.syncId));
       }
     } catch (e) {
       safePrint('Error removing document from local database: $e');
@@ -603,14 +630,15 @@ class OfflineSyncQueueService {
       try {
         final documents = await _databaseService.getAllDocuments();
         final document = documents.firstWhere(
-          (doc) => doc.id.toString() == operation.documentId,
+          (doc) => doc.syncId == operation.documentId,
           orElse: () => Document(
+            syncId: SyncIdentifierService.generateValidated(),
             userId: '',
             title: '',
             category: '',
             filePaths: [],
-            createdAt: TemporalDateTime.now(),
-            lastModified: TemporalDateTime.now(),
+            createdAt: amplify_core.TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
             version: 0,
             syncState: SyncState.notSynced.toJson(),
           ),
@@ -631,15 +659,21 @@ class OfflineSyncQueueService {
   /// Enhanced consolidation logic to optimize queue processing efficiency
   QueuedSyncOperation? _consolidateWithExisting(
       QueuedSyncOperation newOperation) {
-    // Find existing operations for the same document
-    final existingOperations =
-        _queue.where((op) => op.documentId == newOperation.documentId).toList();
+    // Find existing operations for the same sync identifier or document ID
+
+    final existingOperations = _queue
+        .where((op) =>
+            (op.syncId != null && op.syncId == newOperation.syncId) ||
+            (op.syncId == null &&
+                newOperation.syncId == null &&
+                op.documentId == newOperation.documentId))
+        .toList();
 
     if (existingOperations.isEmpty) {
       return null;
     }
 
-    // Enhanced consolidation rules for Requirements 10.3:
+    // Enhanced consolidation rules for Requirements 7.5:
     // 1. Delete operations cancel all previous operations for the document
     // 2. Multiple updates consolidate into the latest update with most recent data
     // 3. Upload followed by updates consolidates into upload with latest data
@@ -648,8 +682,12 @@ class OfflineSyncQueueService {
     // 6. Priority is preserved as maximum of consolidated operations
 
     if (newOperation.type == QueuedOperationType.delete) {
-      // Delete cancels all previous operations for this document
-      _queue.removeWhere((op) => op.documentId == newOperation.documentId);
+      // Delete cancels all previous operations for this sync identifier/document
+      _queue.removeWhere((op) =>
+          (op.syncId != null && op.syncId == newOperation.syncId) ||
+          (op.syncId == null &&
+              newOperation.syncId == null &&
+              op.documentId == newOperation.documentId));
       return newOperation;
     }
 
@@ -697,8 +735,13 @@ class OfflineSyncQueueService {
       QueuedOperationType.update,
     };
 
+    // Can consolidate if both are document operations and have matching sync identifiers
     return documentOps.contains(newOp.type) &&
-        documentOps.contains(existingOp.type);
+        documentOps.contains(existingOp.type) &&
+        ((newOp.syncId != null && newOp.syncId == existingOp.syncId) ||
+            (newOp.syncId == null &&
+                existingOp.syncId == null &&
+                newOp.documentId == existingOp.documentId));
   }
 
   /// Check if two file operations can be consolidated
@@ -801,17 +844,18 @@ class OfflineSyncQueueService {
     }
 
     final originalCount = _queue.length;
-    final documentGroups = <String, List<QueuedSyncOperation>>{};
+    final syncIdGroups = <String, List<QueuedSyncOperation>>{};
 
-    // Group operations by document
+    // Group operations by sync identifier or document ID
     for (final operation in _queue) {
-      documentGroups.putIfAbsent(operation.documentId, () => []).add(operation);
+      final key = operation.syncId ?? operation.documentId;
+      syncIdGroups.putIfAbsent(key, () => []).add(operation);
     }
 
     final consolidatedOperations = <QueuedSyncOperation>[];
 
-    // Process each document group for consolidation
-    for (final entry in documentGroups.entries) {
+    // Process each sync identifier group for consolidation
+    for (final entry in syncIdGroups.entries) {
       final operations = entry.value;
 
       if (operations.length == 1) {
@@ -823,9 +867,9 @@ class OfflineSyncQueueService {
       // Sort operations by queue time to maintain ordering
       operations.sort((a, b) => a.queuedAt.compareTo(b.queuedAt));
 
-      final consolidatedForDocument =
+      final consolidatedForSyncId =
           _consolidateDocumentOperationsList(operations);
-      consolidatedOperations.addAll(consolidatedForDocument);
+      consolidatedOperations.addAll(consolidatedForSyncId);
     }
 
     // Replace queue with consolidated operations

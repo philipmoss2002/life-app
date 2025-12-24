@@ -232,8 +232,7 @@ void main() {
       final service = DeviceManagementService();
 
       final activeDevice = Device(
-        id: 'device1',
-        deviceName: 'Active Device',
+                deviceName: 'Active Device',
         deviceType: 'phone',
         lastSyncTime: amplify_core.TemporalDateTime.fromString(DateTime.now()
             .subtract(const Duration(days: 30))
@@ -245,8 +244,7 @@ void main() {
       );
 
       final inactiveDevice = Device(
-        id: 'device2',
-        deviceName: 'Inactive Device',
+                deviceName: 'Inactive Device',
         deviceType: 'phone',
         lastSyncTime: amplify_core.TemporalDateTime.fromString(DateTime.now()
             .subtract(const Duration(days: 100))
@@ -263,8 +261,7 @@ void main() {
 
     test('device copyWith creates new instance with updated fields', () {
       final original = Device(
-        id: 'device1',
-        deviceName: 'Original Device',
+                deviceName: 'Original Device',
         deviceType: 'phone',
         lastSyncTime: amplify_core.TemporalDateTime.now(),
         createdAt: amplify_core.TemporalDateTime.now(),
@@ -283,8 +280,7 @@ void main() {
 
     test('device toMap works correctly', () {
       final original = Device(
-        id: 'device1',
-        deviceName: 'Test Device',
+                deviceName: 'Test Device',
         deviceType: 'tablet',
         lastSyncTime: amplify_core.TemporalDateTime.now(),
         createdAt: amplify_core.TemporalDateTime.now(),

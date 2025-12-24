@@ -5,6 +5,7 @@ import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/services/realtime_sync_service.dart';
 import 'dart:async';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 void main() {
   group('RealtimeSyncService', () {
     final faker = Faker();
@@ -24,7 +25,7 @@ void main() {
         for (int i = 0; i < iterations; i++) {
           // Generate random user and document data
           final userId = faker.guid.guid();
-          final originalDocument = _generateRandomDocument(faker, userId);
+          final originalDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker, userId);
 
           try {
             // Create service instance
@@ -111,7 +112,7 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           final userId = faker.guid.guid();
-          final document = _generateRandomDocument(faker, userId);
+          final document = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker, userId);
 
           try {
             final service = RealtimeSyncService();
@@ -173,11 +174,11 @@ void main() {
 
         for (int i = 0; i < iterations; i++) {
           final userId = faker.guid.guid();
-          final localDocument = _generateRandomDocument(faker, userId);
+          final localDocument = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), faker, userId);
           final remoteDocument = localDocument.copyWith(
             title: faker.lorem.sentence(), // Different title
             version: localDocument.version, // Same version = conflict
-            lastModified: TemporalDateTime.now(),
+            lastModified: amplify_core.TemporalDateTime.now(),
           );
 
           try {
@@ -329,7 +330,7 @@ void main() {
 }
 
 /// Generate a random document for testing
-Document _generateRandomDocument(Faker faker, String userId) {
+Document _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), Faker faker, String userId) {,
   final categories = [
     'Insurance',
     'Warranty',
@@ -338,7 +339,8 @@ Document _generateRandomDocument(Faker faker, String userId) {
     'Other'
   ];
 
-  return Document(
+  return Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
     userId: userId,
     title: faker.lorem.sentence(),
     category: categories[faker.randomGenerator.integer(categories.length)],
@@ -347,7 +349,7 @@ Document _generateRandomDocument(Faker faker, String userId) {
       (_) => faker.internet.httpsUrl(),
     ),
     renewalDate: faker.randomGenerator.boolean()
-        ? TemporalDateTime.fromString(faker.date
+        ? amplify_core.TemporalDateTime.fromString(faker.date
             .dateTime(minYear: 2024, maxYear: 2026)
             .toUtc()
             .toIso8601String())
@@ -355,11 +357,11 @@ Document _generateRandomDocument(Faker faker, String userId) {
     notes: faker.randomGenerator.boolean()
         ? faker.lorem.sentences(3).join(' ')
         : null,
-    createdAt: TemporalDateTime.fromString(faker.date
+    createdAt: amplify_core.TemporalDateTime.fromString(faker.date
         .dateTime(minYear: 2023, maxYear: 2024)
         .toUtc()
         .toIso8601String()),
-    lastModified: TemporalDateTime.now(),
+    lastModified: amplify_core.TemporalDateTime.now(),
     version: faker.randomGenerator.integer(10, min: 1),
     syncState: 'synced',
   );

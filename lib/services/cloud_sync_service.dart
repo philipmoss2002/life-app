@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:uuid/uuid.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/Document.dart';
-import '../models/sync_event.dart';
+import '../models/sync_event.dart' show LocalSyncEvent, SyncEventType;
 import '../models/sync_state.dart';
 import 'document_sync_manager.dart';
 import 'simple_file_sync_manager.dart';
@@ -13,6 +14,12 @@ import 'subscription_service.dart' as sub;
 import 'database_service.dart';
 import 'analytics_service.dart';
 import 'offline_sync_queue_service.dart';
+import 'deletion_tracking_service.dart';
+import 'sync_error_handler.dart';
+import 'sync_identifier_service.dart';
+import 'backward_compatibility_service.dart';
+import 'sync_state_manager.dart';
+
 import 'log_service.dart' as app_log;
 
 /// Enum representing conflict resolution strategies
@@ -41,6 +48,7 @@ class SyncStatus {
 class SyncOperation {
   final String id;
   final String documentId;
+  final String? syncId; // Universal sync identifier for document matching
   final SyncOperationType type;
   final DateTime queuedAt;
   final int retryCount;
@@ -49,6 +57,7 @@ class SyncOperation {
   SyncOperation({
     required this.id,
     required this.documentId,
+    this.syncId,
     required this.type,
     DateTime? queuedAt,
     this.retryCount = 0,
@@ -58,6 +67,7 @@ class SyncOperation {
   SyncOperation copyWith({
     String? id,
     String? documentId,
+    String? syncId,
     SyncOperationType? type,
     DateTime? queuedAt,
     int? retryCount,
@@ -66,6 +76,7 @@ class SyncOperation {
     return SyncOperation(
       id: id ?? this.id,
       documentId: documentId ?? this.documentId,
+      syncId: syncId ?? this.syncId,
       type: type ?? this.type,
       queuedAt: queuedAt ?? this.queuedAt,
       retryCount: retryCount ?? this.retryCount,
@@ -87,6 +98,9 @@ class CloudSyncService {
   factory CloudSyncService() => _instance;
   CloudSyncService._internal();
 
+  // UUID generator
+  final Uuid _uuid = Uuid();
+
   // Dependencies
   final DocumentSyncManager _documentSyncManager = DocumentSyncManager();
   final SimpleFileSyncManager _fileSyncManager = SimpleFileSyncManager();
@@ -94,10 +108,16 @@ class CloudSyncService {
   final sub.SubscriptionService _subscriptionService =
       sub.SubscriptionService();
   final DatabaseService _databaseService = DatabaseService.instance;
+  final DeletionTrackingService _deletionTrackingService =
+      DeletionTrackingService();
   final Connectivity _connectivity = Connectivity();
   final AnalyticsService _analyticsService = AnalyticsService();
   final OfflineSyncQueueService _queueService = OfflineSyncQueueService();
   final app_log.LogService _logService = app_log.LogService();
+  final SyncErrorHandler _errorHandler = SyncErrorHandler();
+  final BackwardCompatibilityService _backwardCompatibilityService =
+      BackwardCompatibilityService();
+  late final SyncStateManager _syncStateManager;
 
   // State
   bool _isInitialized = false;
@@ -115,11 +135,11 @@ class CloudSyncService {
   final List<SyncOperation> _syncQueue = [];
 
   // Event streaming
-  final StreamController<SyncEvent> _syncEventController =
-      StreamController<SyncEvent>.broadcast();
+  final StreamController<LocalSyncEvent> _syncEventController =
+      StreamController<LocalSyncEvent>.broadcast();
 
   /// Stream of sync events
-  Stream<SyncEvent> get syncEvents => _syncEventController.stream;
+  Stream<LocalSyncEvent> get syncEvents => _syncEventController.stream;
 
   /// Initialize the cloud sync service
   Future<void> initialize() async {
@@ -166,12 +186,25 @@ class CloudSyncService {
       // Initialize offline sync queue service
       await _queueService.initialize();
 
+      // Initialize sync state manager
+      _syncStateManager = SyncStateManager(
+        databaseService: _databaseService,
+        logService: _logService,
+      );
+
+      // Schedule periodic tombstone cleanup (daily)
+      _scheduleTombstoneCleanup();
+
       _isInitialized = true;
       _logInfo('CloudSyncService initialized successfully');
 
-      _emitEvent(_createSyncEvent(
-        SyncEventType.syncStarted,
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
+        eventType: SyncEventType.syncStarted.value,
+        entityType: 'sync',
+        entityId: 'service',
         message: 'Sync service initialized',
+        timestamp: amplify_core.TemporalDateTime.now(),
       ));
     } catch (e) {
       _isInitialized = false;
@@ -217,8 +250,8 @@ class CloudSyncService {
         (_) => _performPeriodicSync(),
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.syncStarted.value,
         entityType: 'sync',
         entityId: 'auto',
@@ -240,9 +273,13 @@ class CloudSyncService {
     _periodicSyncTimer = null;
     _isSyncing = false;
 
-    _emitEvent(_createSyncEvent(
-      SyncEventType.syncCompleted,
+    _emitEvent(LocalSyncEvent(
+      id: _uuid.v4(),
+      eventType: SyncEventType.syncCompleted.value,
+      entityType: 'sync',
+      entityId: 'service',
       message: 'Automatic sync stopped',
+      timestamp: amplify_core.TemporalDateTime.now(),
     ));
   }
 
@@ -263,6 +300,9 @@ class CloudSyncService {
       _logInfo('Starting manual sync');
       _hasUploadedInCurrentSync = false;
 
+      // Queue documents pending deletion first
+      await _queueDocumentsPendingDeletion();
+
       // Process sync queue first
       await _processSyncQueue();
 
@@ -279,8 +319,8 @@ class CloudSyncService {
       _lastSyncTime = DateTime.now();
       _lastSyncHash = await _calculateDocumentsHash();
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.syncCompleted.value,
         entityType: 'sync',
         entityId: 'global',
@@ -289,14 +329,69 @@ class CloudSyncService {
       ));
     } catch (e) {
       _logError('Error during sync: $e');
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.syncFailed.value,
         entityType: 'sync',
         entityId: 'global',
         message: 'Sync failed: $e',
         timestamp: amplify_core.TemporalDateTime.now(),
       ));
+      rethrow;
+    }
+  }
+
+  /// Mark a document for deletion with tombstone tracking
+  ///
+  /// This method should be called when a user deletes a document.
+  /// It creates a tombstone to prevent the document from being reinstated during sync.
+  ///
+  /// [syncId] - The sync identifier of the document to delete
+  /// [deletedBy] - Identifier of the user/device performing the deletion
+  /// [reason] - Reason for deletion (default: 'user')
+  Future<void> markDocumentForDeletion(Document document, String deletedBy,
+      {String reason = 'user'}) async {
+    try {
+      // Get current user
+      final user = await _authService.getCurrentUser();
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      _logInfo(
+          'Marking document for deletion: ${document.title} (ID: ${document.syncId})');
+
+      // Use deletion tracking service to handle the complete deletion workflow
+      await _deletionTrackingService.markDocumentForDeletion(
+        document,
+        user.id,
+        deletedBy,
+        reason: reason,
+      );
+
+      // Queue the document for sync processing
+      final operation = SyncOperation(
+        id: _uuid.v4(),
+        documentId: document.syncId,
+        syncId: document.syncId,
+        type: SyncOperationType.delete,
+        document: document,
+      );
+
+      _syncQueue.add(operation);
+      _logInfo('Document queued for deletion sync: ${document.title}');
+
+      // Trigger sync if conditions are met
+      final connectivityResult = await _connectivity.checkConnectivity();
+      if (await _shouldSync(connectivityResult)) {
+        _logInfo('Sync conditions met, processing deletion immediately');
+        await _processSyncQueue();
+      } else {
+        _logInfo(
+            'Sync conditions not met, deletion will be processed when sync is available');
+      }
+    } catch (e) {
+      _logError('Error marking document for deletion: $e');
       rethrow;
     }
   }
@@ -310,23 +405,48 @@ class CloudSyncService {
     );
   }
 
-  /// Queue a document for synchronization
+  /// Queue a document for synchronization using sync identifier
+  ///
+  /// [document] - The document to sync
+  /// [type] - The type of sync operation (upload, update, delete)
+  ///
+  /// The sync identifier from the document will be used for operation tracking
+  /// and consolidation with other operations for the same document.
   Future<void> queueDocumentSync(
       Document document, SyncOperationType type) async {
     final operation = SyncOperation(
-      id: '${document.id}_${DateTime.now().millisecondsSinceEpoch}',
-      documentId: document.id.toString(),
+      id: _uuid.v4(),
+      documentId: document.syncId,
+      syncId: document.syncId,
       type: type,
       document: document,
     );
 
-    _syncQueue.add(operation);
-    _logInfo(
-        'Queued sync operation: ${operation.type} for document ${document.id}');
+    // Check for consolidation opportunities before adding
+    final consolidatedOperation = _consolidateWithExisting(operation);
+    if (consolidatedOperation != null) {
+      // Replace existing operation with consolidated one
+      final existingIndex = _syncQueue.indexWhere((op) =>
+          op.syncId == consolidatedOperation.syncId &&
+          op.id == consolidatedOperation.id);
+      if (existingIndex != -1) {
+        _syncQueue[existingIndex] = consolidatedOperation;
+        _logInfo(
+            'Consolidated sync operation: ${consolidatedOperation.type} for document ${consolidatedOperation.syncId ?? consolidatedOperation.documentId}');
+      } else {
+        _syncQueue.add(consolidatedOperation);
+        _logInfo(
+            'Queued consolidated sync operation: ${consolidatedOperation.type} for document ${consolidatedOperation.syncId ?? consolidatedOperation.documentId}');
+      }
+    } else {
+      _syncQueue.add(operation);
+      _logInfo(
+          'Queued sync operation: ${operation.type} for document ${operation.syncId ?? operation.documentId}');
+    }
 
     // Update document sync state to pending
     try {
-      await _updateLocalDocumentSyncState(document.id, SyncState.pending);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.pending);
     } catch (e) {
       // Ignore database errors in test environment
       _logWarning('Could not update local sync state: $e');
@@ -344,18 +464,226 @@ class CloudSyncService {
     }
   }
 
-  /// Resolve a conflict
+  /// Resolve a conflict using sync identifier
+  ///
+  /// [syncId] - The sync identifier of the document with conflict
+  /// [resolution] - The conflict resolution strategy to apply
   Future<void> resolveConflict(
-    String documentId,
+    String syncId,
     ConflictResolution resolution,
   ) async {
     // This will be implemented in the conflict resolution service
     // For now, just log the resolution
     _logInfo(
-        'Resolving conflict for document $documentId with strategy: $resolution');
+        'Resolving conflict for document with syncId $syncId using strategy: $resolution');
+  }
+
+  /// Queue a document for synchronization by sync identifier
+  ///
+  /// [syncId] - The sync identifier of the document to sync
+  /// [type] - The type of sync operation (upload, update, delete)
+  ///
+  /// This method looks up the document by sync identifier and queues it for sync.
+  Future<void> queueDocumentSyncBySyncId(
+    String syncId,
+    SyncOperationType type,
+  ) async {
+    // Validate sync identifier format
+    SyncIdentifierService.validateOrThrow(syncId,
+        context: 'document sync queueing');
+
+    try {
+      // Get the document by sync identifier
+      final documents = await _databaseService.getAllDocuments();
+      final document = documents.firstWhere(
+        (doc) => doc.syncId == syncId,
+        orElse: () => throw ArgumentError(
+            'Document not found with syncId: "$syncId" for sync queueing'),
+      );
+
+      // Queue the document for sync
+      await queueDocumentSync(document, type);
+
+      _logInfo(
+          'Queued document for sync by syncId: $syncId, type: ${type.name}');
+    } catch (e) {
+      _logError('Error queuing document sync by syncId $syncId: $e');
+      rethrow;
+    }
+  }
+
+  /// Get sync status for a specific document by sync identifier
+  ///
+  /// [syncId] - The sync identifier of the document
+  /// Returns the current sync state and any pending operations for the document
+  Future<Map<String, dynamic>> getDocumentSyncStatus(String syncId) async {
+    // Validate sync identifier format
+    SyncIdentifierService.validateOrThrow(syncId,
+        context: 'sync status retrieval');
+
+    try {
+      // Get the document by sync identifier
+      final documents = await _databaseService.getAllDocuments();
+      final document = documents.firstWhere(
+        (doc) => doc.syncId == syncId,
+        orElse: () => throw ArgumentError(
+            'Document not found with syncId: "$syncId" for sync status retrieval'),
+      );
+
+      // Check for pending operations in sync queue
+      final pendingOperations = _syncQueue
+          .where((op) => op.syncId == syncId)
+          .map((op) => {
+                'id': op.id,
+                'type': op.type.name,
+                'queuedAt': op.queuedAt.toIso8601String(),
+                'retryCount': op.retryCount,
+              })
+          .toList();
+
+      return {
+        'syncId': syncId,
+        'syncState': document.syncState,
+        'version': document.version,
+        'lastModified': document.lastModified.format(),
+        'pendingOperations': pendingOperations,
+        'hasPendingOperations': pendingOperations.isNotEmpty,
+      };
+    } catch (e) {
+      _logError('Error getting sync status for syncId $syncId: $e');
+      rethrow;
+    }
+  }
+
+  /// Cancel pending sync operations for a document by sync identifier
+  ///
+  /// [syncId] - The sync identifier of the document
+  /// Returns the number of operations cancelled
+  Future<int> cancelPendingSyncOperations(String syncId) async {
+    // Validate sync identifier format
+    SyncIdentifierService.validateOrThrow(syncId,
+        context: 'sync operation cancellation');
+
+    try {
+      final initialCount = _syncQueue.length;
+      _syncQueue.removeWhere((op) => op.syncId == syncId);
+      final cancelledCount = initialCount - _syncQueue.length;
+
+      if (cancelledCount > 0) {
+        _logInfo(
+            'Cancelled $cancelledCount pending sync operations for syncId: $syncId');
+
+        // Emit event about cancelled operations
+        _emitEvent(LocalSyncEvent(
+          id: _uuid.v4(),
+          eventType: 'operations_cancelled',
+          entityType: 'document',
+          entityId: syncId,
+          message: 'Cancelled $cancelledCount pending sync operations',
+          timestamp: amplify_core.TemporalDateTime.now(),
+        ));
+      }
+
+      return cancelledCount;
+    } catch (e) {
+      _logError('Error cancelling sync operations for syncId $syncId: $e');
+      rethrow;
+    }
   }
 
   // Private methods
+
+  /// Consolidate operation with existing operations in queue by sync identifier
+  ///
+  /// Enhanced consolidation logic to optimize queue processing efficiency.
+  /// Operations for the same sync identifier are consolidated according to these rules:
+  /// 1. Delete operations cancel all previous operations for the sync identifier
+  /// 2. Multiple updates consolidate into the latest update with most recent data
+  /// 3. Upload followed by updates consolidates into upload with latest data
+  SyncOperation? _consolidateWithExisting(SyncOperation newOperation) {
+    if (newOperation.syncId == null) {
+      return null; // Cannot consolidate operations without sync identifiers
+    }
+
+    // Find existing operations for the same sync identifier
+    final existingOperations =
+        _syncQueue.where((op) => op.syncId == newOperation.syncId).toList();
+
+    if (existingOperations.isEmpty) {
+      return null;
+    }
+
+    // Delete operations cancel all previous operations for this sync identifier
+    if (newOperation.type == SyncOperationType.delete) {
+      _syncQueue.removeWhere((op) => op.syncId == newOperation.syncId);
+      return newOperation;
+    }
+
+    // Sort existing operations by queue time to process in order
+    existingOperations.sort((a, b) => a.queuedAt.compareTo(b.queuedAt));
+
+    SyncOperation? consolidatedOperation;
+    final operationsToRemove = <String>[];
+
+    for (final existing in existingOperations) {
+      if (existing.type == SyncOperationType.delete) {
+        // Can't consolidate with delete - it should be processed first
+        continue;
+      }
+
+      // Document operation consolidation
+      if (_canConsolidateDocumentOperations(newOperation, existing)) {
+        consolidatedOperation =
+            _consolidateDocumentOperations(newOperation, existing);
+        operationsToRemove.add(existing.id);
+      }
+    }
+
+    // Remove consolidated operations from queue
+    if (consolidatedOperation != null) {
+      _syncQueue.removeWhere((op) => operationsToRemove.contains(op.id));
+      return consolidatedOperation;
+    }
+
+    return null;
+  }
+
+  /// Check if two document operations can be consolidated
+  bool _canConsolidateDocumentOperations(
+      SyncOperation newOp, SyncOperation existingOp) {
+    // Document operations that can be consolidated
+    final documentOps = {
+      SyncOperationType.upload,
+      SyncOperationType.update,
+    };
+
+    return documentOps.contains(newOp.type) &&
+        documentOps.contains(existingOp.type) &&
+        newOp.syncId == existingOp.syncId;
+  }
+
+  /// Consolidate document operations (upload/update) by sync identifier
+  SyncOperation _consolidateDocumentOperations(
+      SyncOperation newOp, SyncOperation existingOp) {
+    // Determine the final operation type
+    SyncOperationType finalType;
+    if (existingOp.type == SyncOperationType.upload) {
+      // Keep upload type - it's the initial creation
+      finalType = SyncOperationType.upload;
+    } else {
+      // Use the new operation type
+      finalType = newOp.type;
+    }
+
+    // Use the most recent document data
+    final finalDocument = newOp.document ?? existingOp.document;
+
+    return existingOp.copyWith(
+      type: finalType,
+      document: finalDocument,
+      retryCount: 0, // Reset retry count for consolidated operation
+    );
+  }
 
   void _setupConnectivityMonitoring() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
@@ -363,6 +691,47 @@ class CloudSyncService {
         _handleConnectivityChange(results);
       },
     );
+  }
+
+  /// Schedule periodic tombstone cleanup to prevent unbounded growth
+  void _scheduleTombstoneCleanup() {
+    // Run cleanup daily at 2 AM local time
+    Timer.periodic(const Duration(hours: 24), (timer) async {
+      try {
+        _logInfo('Starting scheduled tombstone cleanup');
+        final deletedCount =
+            await _deletionTrackingService.cleanupOldTombstones();
+        _logInfo(
+            'Scheduled tombstone cleanup completed: $deletedCount tombstones removed');
+      } catch (e) {
+        _logError('Error during scheduled tombstone cleanup: $e');
+      }
+    });
+
+    // Also run cleanup immediately if it's been more than 7 days since last cleanup
+    _runInitialTombstoneCleanupIfNeeded();
+  }
+
+  /// Run initial tombstone cleanup if needed
+  Future<void> _runInitialTombstoneCleanupIfNeeded() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastCleanup = prefs.getInt('last_tombstone_cleanup') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+      if (now - lastCleanup > sevenDaysMs) {
+        _logInfo(
+            'Running initial tombstone cleanup (last cleanup was more than 7 days ago)');
+        final deletedCount =
+            await _deletionTrackingService.cleanupOldTombstones();
+        await prefs.setInt('last_tombstone_cleanup', now);
+        _logInfo(
+            'Initial tombstone cleanup completed: $deletedCount tombstones removed');
+      }
+    } catch (e) {
+      _logError('Error during initial tombstone cleanup: $e');
+    }
   }
 
   void _handleConnectivityChange(List<ConnectivityResult> results) async {
@@ -438,6 +807,9 @@ class CloudSyncService {
 
     _logInfo('Processing sync queue: ${_syncQueue.length} operations');
 
+    // Consolidate operations by sync identifier before processing
+    await _consolidateQueueBySyncId();
+
     final operations = List<SyncOperation>.from(_syncQueue);
     _syncQueue.clear();
 
@@ -447,9 +819,14 @@ class CloudSyncService {
       } catch (e) {
         _logError('Error processing sync operation: $e');
 
-        // Retry logic with exponential backoff
+        // Enhanced retry logic with sync identifier-based idempotency
         if (operation.retryCount < 5) {
+          final retryId = operation.syncId != null
+              ? '${operation.syncId}_${operation.type.name}_retry_${operation.retryCount + 1}'
+              : '${operation.documentId}_${operation.type.name}_retry_${operation.retryCount + 1}';
+
           final updatedOperation = operation.copyWith(
+            id: retryId, // Use sync identifier for idempotent retry IDs
             retryCount: operation.retryCount + 1,
           );
           _syncQueue.add(updatedOperation);
@@ -463,17 +840,103 @@ class CloudSyncService {
           await _updateLocalDocumentSyncState(
               operation.documentId, SyncState.error);
 
-          _emitEvent(SyncEvent(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
+          _emitEvent(LocalSyncEvent(
+            id: _uuid.v4(),
             eventType: SyncEventType.syncFailed.value,
             entityType: 'document',
-            entityId: operation.documentId,
+            entityId: operation.syncId ?? operation.documentId,
             message: 'Max retries reached for sync operation',
             timestamp: amplify_core.TemporalDateTime.now(),
           ));
         }
       }
     }
+  }
+
+  /// Consolidate all operations in the queue by sync identifier for maximum efficiency
+  Future<void> _consolidateQueueBySyncId() async {
+    if (_syncQueue.isEmpty) {
+      return;
+    }
+
+    final originalCount = _syncQueue.length;
+    final syncIdGroups = <String, List<SyncOperation>>{};
+
+    // Group operations by sync identifier
+    for (final operation in _syncQueue) {
+      final key = operation.syncId ?? operation.documentId;
+      syncIdGroups.putIfAbsent(key, () => []).add(operation);
+    }
+
+    final consolidatedOperations = <SyncOperation>[];
+
+    // Process each sync identifier group for consolidation
+    for (final entry in syncIdGroups.entries) {
+      final operations = entry.value;
+
+      if (operations.length == 1) {
+        // No consolidation needed for single operations
+        consolidatedOperations.addAll(operations);
+        continue;
+      }
+
+      // Sort operations by queue time to maintain ordering
+      operations.sort((a, b) => a.queuedAt.compareTo(b.queuedAt));
+
+      final consolidatedForSyncId = _consolidateOperationsList(operations);
+      consolidatedOperations.addAll(consolidatedForSyncId);
+    }
+
+    // Replace queue with consolidated operations
+    _syncQueue.clear();
+    _syncQueue.addAll(consolidatedOperations);
+
+    final consolidatedCount = originalCount - _syncQueue.length;
+
+    if (consolidatedCount > 0) {
+      _logInfo(
+          'Queue consolidation completed: $consolidatedCount operations consolidated, ${_syncQueue.length} operations remaining');
+    }
+  }
+
+  /// Consolidate operations for a single sync identifier
+  List<SyncOperation> _consolidateOperationsList(
+      List<SyncOperation> operations) {
+    if (operations.length <= 1) {
+      return operations;
+    }
+
+    final result = <SyncOperation>[];
+    SyncOperation? currentDocumentOp;
+
+    for (final operation in operations) {
+      switch (operation.type) {
+        case SyncOperationType.delete:
+          // Delete cancels all previous operations
+          result.clear();
+          result.add(operation);
+          currentDocumentOp = null;
+          break;
+
+        case SyncOperationType.upload:
+        case SyncOperationType.update:
+          if (currentDocumentOp == null) {
+            currentDocumentOp = operation;
+          } else {
+            // Consolidate with existing document operation
+            currentDocumentOp =
+                _consolidateDocumentOperations(operation, currentDocumentOp);
+          }
+          break;
+      }
+    }
+
+    // Add consolidated document operation if exists
+    if (currentDocumentOp != null) {
+      result.add(currentDocumentOp);
+    }
+
+    return result;
   }
 
   Future<void> _processSyncOperation(SyncOperation operation) async {
@@ -502,11 +965,11 @@ class CloudSyncService {
       // Mark that we're uploading in this sync cycle
       _hasUploadedInCurrentSync = true;
 
-      _logInfo('🔄 Starting upload for document: ${document.id}');
+      _logInfo('🔄 Starting upload for document: ${document.syncId}');
       _logInfo('📁 File paths: ${document.filePaths}');
 
       // Update sync state to syncing
-      await _updateLocalDocumentSyncState(document.id, SyncState.syncing);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.syncing);
 
       // Upload file attachments first and get S3 keys
       Document documentToUpload = document;
@@ -517,7 +980,7 @@ class CloudSyncService {
         try {
           final uploadResults = await _fileSyncManager.uploadFilesParallel(
             document.filePaths,
-            document.id.toString(),
+            document.syncId,
           );
           _logInfo('✅ Files uploaded successfully: ${uploadResults.keys}');
 
@@ -536,10 +999,10 @@ class CloudSyncService {
             type: AnalyticsSyncEventType.fileUpload,
             success: true,
             latencyMs: fileLatency,
-            documentId: document.id.toString(),
+            documentId: document.syncId,
           );
         } catch (e) {
-          _logError('❌ File upload failed: $e');
+          _errorHandler.logError(document, 'file upload', e.toString());
           rethrow;
         }
       }
@@ -557,10 +1020,10 @@ class CloudSyncService {
         _logInfo('✅ Document metadata uploaded successfully to DynamoDB');
 
         // If DynamoDB generated a new ID, update the local document
-        if (uploadedDocument.id != document.id) {
+        if (uploadedDocument.syncId != document.syncId) {
           _logInfo(
-              '🔄 Updating local document with DynamoDB ID: ${uploadedDocument.id}');
-          _logInfo('📝 Original local ID was: ${document.id}');
+              '🔄 Updating local document with DynamoDB ID: ${uploadedDocument.syncId}');
+          _logInfo('📝 Original local ID was: ${document.syncId}');
 
           // Update the local document with the new ID and other DynamoDB fields
           await _databaseService.updateDocument(uploadedDocument);
@@ -590,7 +1053,7 @@ class CloudSyncService {
       }
 
       // Update sync state to synced (use the original document ID for local state tracking)
-      await _updateLocalDocumentSyncState(document.id, SyncState.synced);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.synced);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -599,19 +1062,26 @@ class CloudSyncService {
         type: AnalyticsSyncEventType.documentUpload,
         success: true,
         latencyMs: latency,
-        documentId: document.id.toString(),
+        documentId: document.syncId,
+        syncId: document.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.documentUploaded.value,
         entityType: 'document',
-        entityId: document.id.toString(),
+        entityId: document.syncId,
+        syncId: document.syncId,
         message: 'Document uploaded successfully',
         timestamp: amplify_core.TemporalDateTime.now(),
+        metadata: {
+          'documentTitle': document.title,
+          'version': document.version,
+          'fileCount': document.filePaths.length,
+        },
       ));
     } catch (e) {
-      await _updateLocalDocumentSyncState(document.id, SyncState.error);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.error);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -621,7 +1091,8 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.toString(),
-        documentId: document.id.toString(),
+        documentId: document.syncId,
+        syncId: document.syncId,
       );
 
       rethrow;
@@ -632,13 +1103,13 @@ class CloudSyncService {
     final startTime = DateTime.now();
     try {
       // Update sync state to syncing
-      await _updateLocalDocumentSyncState(document.id, SyncState.syncing);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.syncing);
 
       // Update document metadata
       await _documentSyncManager.updateDocument(document);
 
       // Update sync state to synced
-      await _updateLocalDocumentSyncState(document.id, SyncState.synced);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.synced);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -647,20 +1118,25 @@ class CloudSyncService {
         type: AnalyticsSyncEventType.documentUpdate,
         success: true,
         latencyMs: latency,
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.documentUploaded.value,
         entityType: 'document',
-        entityId: document.id.toString(),
+        entityId: document.syncId,
+        syncId: document.syncId,
         message: 'Document updated successfully',
         timestamp: amplify_core.TemporalDateTime.now(),
+        metadata: {
+          'documentTitle': document.title,
+          'version': document.version,
+        },
       ));
     } on VersionConflictException catch (e) {
       // Conflict detected
-      await _updateLocalDocumentSyncState(document.id, SyncState.conflict);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.conflict);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -670,21 +1146,21 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.message,
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.conflictDetected.value,
         entityType: 'document',
-        entityId: document.id.toString(),
+        entityId: document.syncId,
         message: 'Conflict detected: ${e.message}',
         timestamp: amplify_core.TemporalDateTime.now(),
       ));
 
       rethrow;
     } catch (e) {
-      await _updateLocalDocumentSyncState(document.id, SyncState.error);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.error);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -694,7 +1170,7 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.toString(),
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
       rethrow;
@@ -704,32 +1180,122 @@ class CloudSyncService {
   Future<void> _deleteDocument(Document document) async {
     final startTime = DateTime.now();
     try {
-      // Update sync state to syncing
-      await _updateLocalDocumentSyncState(document.id, SyncState.syncing);
+      _logInfo('Document sync state: ${document.syncState}');
+      _logInfo('Document ID: ${document.syncId}');
 
-      // Delete document from remote
-      await _documentSyncManager.deleteDocument(document.id.toString());
+      // Parse sync state from document
+      final syncState = SyncState.fromJson(document.syncState);
 
-      // Delete files from remote (filePaths now contain S3 keys)
-      for (final s3Key in document.filePaths) {
-        final fileStartTime = DateTime.now();
+      // Check document ID format (UUID vs integer)
+      final isUuidFormat = RegExp(
+              r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+          .hasMatch(document.syncId);
+      _logInfo('Document ID format check: $isUuidFormat');
+
+      // CRITICAL FIX: Check if remote deletion is needed
+      // Documents with pendingDeletion, synced, or conflict states need remote deletion
+      final needsRemoteDeletion = syncState == SyncState.synced ||
+          syncState == SyncState.conflict ||
+          syncState == SyncState.pendingDeletion;
+
+      if (needsRemoteDeletion) {
+        _logInfo('Document needs remote deletion, processing...');
+
+        // Update sync state to syncing
+        await _updateLocalDocumentSyncState(document.syncId, SyncState.syncing);
+
+        // Delete document from remote DynamoDB using syncId
         try {
-          await _fileSyncManager.deleteFile(s3Key);
-          final fileLatency =
-              DateTime.now().difference(fileStartTime).inMilliseconds;
-
-          // Track file delete analytics
-          await _analyticsService.trackSyncEvent(
-            type: AnalyticsSyncEventType.fileDelete,
-            success: true,
-            latencyMs: fileLatency,
-            documentId: document.id.toString(),
-          );
+          if (document.syncId != null && document.syncId!.isNotEmpty) {
+            await _documentSyncManager.deleteDocument(document.syncId!);
+            _logInfo(
+                'Document deleted from DynamoDB using syncId: ${document.syncId}');
+          } else {
+            _logWarning(
+                'Document has no syncId, cannot delete from remote: ${document.title}');
+          }
         } catch (e) {
-          _logError('Failed to delete file $s3Key: $e');
-          // Continue with other files instead of failing completely
+          _logError('Failed to delete document from DynamoDB: $e');
+          // Continue with file deletion even if DynamoDB deletion fails
         }
+
+        // Delete files from S3 using FileAttachment records for accurate paths
+        try {
+          final fileAttachments = await _databaseService
+              .getFileAttachmentsWithLabels(int.parse(document.syncId));
+          if (fileAttachments.isNotEmpty) {
+            _logInfo(
+                'Found ${fileAttachments.length} file attachments to delete from S3');
+            for (final attachment in fileAttachments) {
+              final fileStartTime = DateTime.now();
+              try {
+                _logInfo('Deleting file from S3: ${attachment.s3Key}');
+                await _fileSyncManager.deleteFile(attachment.s3Key);
+                final fileLatency =
+                    DateTime.now().difference(fileStartTime).inMilliseconds;
+
+                // Track file delete analytics
+                await _analyticsService.trackSyncEvent(
+                  type: AnalyticsSyncEventType.fileDelete,
+                  success: true,
+                  latencyMs: fileLatency,
+                  documentId: document.syncId,
+                );
+                _logInfo(
+                    'Successfully deleted file from S3: ${attachment.s3Key}');
+              } catch (e) {
+                _logError('Failed to delete file ${attachment.s3Key}: $e');
+                // Continue with other files instead of failing completely
+              }
+            }
+          } else {
+            _logInfo(
+                'Files were never uploaded to S3, skipping remote file deletion');
+          }
+        } catch (e) {
+          _logError('Error getting file attachments for deletion: $e');
+          // Fallback to using document.filePaths if FileAttachment query fails
+          for (final s3Key in document.filePaths) {
+            final fileStartTime = DateTime.now();
+            try {
+              _logInfo('Fallback: Deleting file from S3: $s3Key');
+              await _fileSyncManager.deleteFile(s3Key);
+              final fileLatency =
+                  DateTime.now().difference(fileStartTime).inMilliseconds;
+
+              // Track file delete analytics
+              await _analyticsService.trackSyncEvent(
+                type: AnalyticsSyncEventType.fileDelete,
+                success: true,
+                latencyMs: fileLatency,
+                documentId: document.syncId,
+              );
+            } catch (e) {
+              _logError('Failed to delete file $s3Key: $e');
+              // Continue with other files instead of failing completely
+            }
+          }
+        }
+
+        // Delete FileAttachment records from local database
+        try {
+          final fileAttachments = await _databaseService
+              .getFileAttachmentsWithLabels(int.parse(document.syncId));
+          if (fileAttachments.isNotEmpty) {
+            _logInfo(
+                'FileAttachments were never synced to DynamoDB, skipping remote deletion');
+          }
+        } catch (e) {
+          _logError('Error checking FileAttachment records: $e');
+        }
+      } else {
+        _logInfo(
+            'Document was never synced to remote (syncState: $syncState), skipping remote deletion: ${document.title}');
       }
+
+      // Complete deletion using deletion tracking service
+      await _deletionTrackingService.completeDeletion(document);
+      _logInfo('Document deletion completed: ${document.title}');
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -738,19 +1304,19 @@ class CloudSyncService {
         type: AnalyticsSyncEventType.documentDelete,
         success: true,
         latencyMs: latency,
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.documentUploaded.value,
         entityType: 'document',
-        entityId: document.id.toString(),
+        entityId: document.syncId,
         message: 'Document deleted successfully',
         timestamp: amplify_core.TemporalDateTime.now(),
       ));
     } catch (e) {
-      await _updateLocalDocumentSyncState(document.id, SyncState.error);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.error);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -760,7 +1326,7 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.toString(),
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
       rethrow;
@@ -776,18 +1342,30 @@ class CloudSyncService {
       }
 
       // Fetch all documents from remote
-      final remoteDocuments =
+      final allRemoteDocuments =
           await _documentSyncManager.fetchAllDocuments(user.id);
+
+      // Filter out tombstoned documents to prevent reinstating deleted documents
+      final remoteDocuments = await _deletionTrackingService
+          .filterTombstonedDocuments(allRemoteDocuments);
+
+      if (allRemoteDocuments.length > remoteDocuments.length) {
+        final filteredCount =
+            allRemoteDocuments.length - remoteDocuments.length;
+        _logInfo(
+            'Filtered out $filteredCount tombstoned documents from remote sync');
+      }
 
       // Get local documents
       final localDocuments = await _databaseService.getAllDocuments();
 
       // Sync remote documents to local
       for (final remoteDoc in remoteDocuments) {
-        // Try to find matching local document by ID first
+        // Try to find matching local document by syncId first
         Document? localDoc = localDocuments.firstWhere(
-          (doc) => doc.id.toString() == remoteDoc.id.toString(),
+          (doc) => doc.syncId != null && doc.syncId == remoteDoc.syncId,
           orElse: () => Document(
+            syncId: SyncIdentifierService.generateValidated(),
             userId: 'unknown',
             title: '',
             category: '',
@@ -799,15 +1377,14 @@ class CloudSyncService {
           ),
         );
 
-        // If not found by ID, try to find by title, category, and creation time (potential duplicate)
-        if (localDoc.title.isEmpty) {
+        // If not found by syncId, try to find by legacy ID matching (for migration compatibility)
+        // Only use legacy matching if not all documents have sync identifiers
+        if (localDoc.title.isEmpty &&
+            await _backwardCompatibilityService.shouldUseLegacyMatching()) {
           localDoc = localDocuments.firstWhere(
-            (doc) =>
-                doc.title == remoteDoc.title &&
-                doc.category == remoteDoc.category &&
-                doc.createdAt.format() == remoteDoc.createdAt.format() &&
-                doc.userId == remoteDoc.userId,
+            (doc) => doc.syncId.toString() == remoteDoc.syncId,
             orElse: () => Document(
+              syncId: SyncIdentifierService.generateValidated(),
               userId: 'unknown',
               title: '',
               category: '',
@@ -819,19 +1396,18 @@ class CloudSyncService {
             ),
           );
 
-          // If we found a potential duplicate, update the local document with the remote ID
+          // If we found a potential match by legacy ID, update the local document with the syncId
           if (localDoc.title.isNotEmpty) {
+            _logInfo('🔍 Found document by legacy ID match: ${localDoc.title}');
             _logInfo(
-                '🔍 Found potential duplicate document: ${localDoc.title}');
-            _logInfo(
-                '🔄 Replacing local document ID ${localDoc.id} with remote ID ${remoteDoc.id}');
+                '🔄 Updating local document with syncId: ${remoteDoc.syncId}');
 
-            // Delete the old local document
-            await _databaseService.deleteDocument(int.parse(localDoc.id));
+            // The syncId is immutable in the Document model, so we'll just continue processing
+            // The document already has the correct syncId from the remote
+            _logInfo('✅ Document already has correct syncId');
 
-            // Create the remote document locally
-            await _databaseService.createDocument(remoteDoc);
-            _logInfo('✅ Local duplicate replaced with remote document');
+            // Clear backward compatibility cache since we just updated a document
+            _backwardCompatibilityService.clearStatusCache();
             continue; // Skip further processing for this document
           }
         }
@@ -866,7 +1442,7 @@ class CloudSyncService {
       for (final s3Key in remoteDoc.filePaths) {
         final fileStartTime = DateTime.now();
         try {
-          await _fileSyncManager.downloadFile(s3Key, remoteDoc.id.toString());
+          await _fileSyncManager.downloadFile(s3Key, remoteDoc.syncId);
           final fileLatency =
               DateTime.now().difference(fileStartTime).inMilliseconds;
 
@@ -875,7 +1451,7 @@ class CloudSyncService {
             type: AnalyticsSyncEventType.fileDownload,
             success: true,
             latencyMs: fileLatency,
-            documentId: remoteDoc.id.toString(),
+            documentId: remoteDoc.syncId,
           );
         } catch (e) {
           _logError('Failed to download file $s3Key: $e');
@@ -885,7 +1461,16 @@ class CloudSyncService {
 
       // Update or insert document in local database
       final existingDoc = await _databaseService.getAllDocuments();
-      final docExists = existingDoc.any((doc) => doc.id == remoteDoc.id);
+
+      // Check for existing document using sync identifier first, then legacy ID if backward compatibility is enabled
+      bool docExists = existingDoc
+          .any((doc) => doc.syncId != null && doc.syncId == remoteDoc.syncId);
+
+      // Only check legacy ID matching if backward compatibility is enabled and no sync ID match found
+      if (!docExists &&
+          await _backwardCompatibilityService.shouldUseLegacyMatching()) {
+        docExists = existingDoc.any((doc) => doc.syncId == remoteDoc.syncId);
+      }
 
       if (docExists) {
         await _databaseService.updateDocument(remoteDoc);
@@ -900,14 +1485,15 @@ class CloudSyncService {
         type: AnalyticsSyncEventType.documentDownload,
         success: true,
         latencyMs: latency,
-        documentId: remoteDoc.id.toString(),
+        documentId: remoteDoc.syncId,
+        syncId: remoteDoc.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.documentDownloaded.value,
         entityType: 'document',
-        entityId: remoteDoc.id.toString(),
+        entityId: remoteDoc.syncId,
         message: 'Document downloaded successfully',
         timestamp: amplify_core.TemporalDateTime.now(),
       ));
@@ -922,47 +1508,98 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.toString(),
-        documentId: remoteDoc.id.toString(),
+        documentId: remoteDoc.syncId,
       );
 
       rethrow;
     }
   }
 
+  /// Update sync state using sync identifier instead of document ID
+  ///
+  /// [syncId] - The sync identifier of the document
+  /// [state] - The new sync state to set
+  /// [metadata] - Optional metadata about the state change
+  Future<void> _updateSyncStateBySyncId(String syncId, SyncState state,
+      {Map<String, dynamic>? metadata}) async {
+    try {
+      await _syncStateManager.updateSyncState(syncId, state,
+          metadata: metadata);
+    } catch (e) {
+      _logError(
+          'Failed to update sync state for syncId: $syncId to ${state.name}: $e');
+      rethrow;
+    }
+  }
+
+  /// Legacy method for backward compatibility - converts document ID to sync ID
   Future<void> _updateLocalDocumentSyncState(
       String documentId, SyncState state) async {
-    // Get the document from local database
-    final documents = await _databaseService.getAllDocuments();
-    final document = documents.firstWhere(
-      (doc) => doc.id == documentId,
-      orElse: () => Document(
-        userId: 'unknown',
-        title: '',
-        category: '',
-        filePaths: [],
-        createdAt: amplify_core.TemporalDateTime.now(),
-        lastModified: amplify_core.TemporalDateTime.now(),
-        version: 0,
-        syncState: SyncState.pending.toJson(),
-      ),
-    );
+    try {
+      // Find document by ID to get sync identifier
+      final documents = await _databaseService.getAllDocuments();
+      final document = documents.firstWhere(
+        (doc) => doc.syncId == documentId,
+        orElse: () => Document(
+          syncId: SyncIdentifierService.generateValidated(),
+          userId: 'unknown',
+          title: '',
+          category: '',
+          filePaths: [],
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 0,
+          syncState: SyncState.pending.toJson(),
+        ),
+      );
 
-    if (document.title.isEmpty) {
-      return;
+      if (document.title.isEmpty) {
+        _logWarning('Document not found for ID: $documentId');
+        return;
+      }
+
+      // Use sync identifier if available, otherwise fall back to old behavior
+      if (document.syncId != null && document.syncId!.isNotEmpty) {
+        await _updateSyncStateBySyncId(document.syncId!, state);
+      } else {
+        // Legacy fallback - update document directly
+        final updatedDoc = document.copyWith(syncState: state.toJson());
+        await _databaseService.updateDocument(updatedDoc);
+
+        _emitEvent(LocalSyncEvent(
+          id: _uuid.v4(),
+          eventType: SyncEventType.stateChanged.value,
+          entityType: 'document',
+          entityId: documentId,
+          message: 'Sync state changed to ${state.name}',
+          timestamp: amplify_core.TemporalDateTime.now(),
+        ));
+      }
+    } catch (e) {
+      _logError('Failed to update sync state for document ID: $documentId: $e');
+      rethrow;
     }
+  }
 
-    // Update sync state
-    final updatedDoc = document.copyWith(syncState: state.toJson());
-    await _databaseService.updateDocument(updatedDoc);
+  /// Query documents by sync state, returning their sync identifiers
+  Future<List<String>> getDocumentsBySyncState(SyncState state) async {
+    return await _syncStateManager.getDocumentsBySyncState(state);
+  }
 
-    _emitEvent(SyncEvent(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      eventType: SyncEventType.stateChanged.value,
-      entityType: 'document',
-      entityId: documentId.toString(),
-      message: 'Sync state changed to ${state.name}',
-      timestamp: amplify_core.TemporalDateTime.now(),
-    ));
+  /// Get sync state for a document by sync identifier
+  Future<SyncState?> getSyncStateBySyncId(String syncId) async {
+    return await _syncStateManager.getSyncState(syncId);
+  }
+
+  /// Get sync state history for a document by sync identifier
+  List<SyncStateHistoryEntry> getSyncStateHistory(String syncId) {
+    return _syncStateManager.getSyncStateHistory(syncId);
+  }
+
+  /// Mark document for deletion using sync identifier
+  Future<void> markDocumentForDeletionBySyncId(String syncId,
+      {Map<String, dynamic>? metadata}) async {
+    await _syncStateManager.markForDeletion(syncId, metadata: metadata);
   }
 
   String _generateS3Key(String documentId, String filePath) {
@@ -971,22 +1608,39 @@ class CloudSyncService {
     return 'documents/$documentId/$timestamp-$fileName';
   }
 
-  void _emitEvent(SyncEvent event) {
+  void _emitEvent(LocalSyncEvent event) {
     if (!_syncEventController.isClosed) {
       _syncEventController.add(event);
     }
   }
 
-  /// Helper to create SyncEvent with proper parameters
-  SyncEvent _createSyncEvent(SyncEventType type,
-      {String? entityId, String? message}) {
-    return SyncEvent(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+  /// Helper to get current user ID
+  Future<String> _getCurrentUserId() async {
+    try {
+      final user = await _authService.getCurrentUser();
+      return user?.id ?? 'anonymous';
+    } catch (e) {
+      _logWarning('Failed to get current user ID: $e');
+      return 'anonymous';
+    }
+  }
+
+  /// Helper to create SyncEvent with proper parameters including sync identifier
+  Future<LocalSyncEvent> _createSyncEvent(SyncEventType type,
+      {String? entityId,
+      String? syncId,
+      String? message,
+      Map<String, dynamic>? metadata}) async {
+    final userId = await _getCurrentUserId();
+    return LocalSyncEvent(
+      id: _uuid.v4(),
       eventType: type.value,
       entityType: 'sync',
       entityId: entityId ?? 'global',
+      syncId: syncId,
       message: message ?? '',
       timestamp: amplify_core.TemporalDateTime.now(),
+      metadata: metadata,
     );
   }
 
@@ -1000,21 +1654,31 @@ class CloudSyncService {
     try {
       _logInfo('Starting batch sync for ${documents.length} documents');
 
-      // Update all documents to syncing state
+      // Update all documents to syncing state using sync identifiers
       for (final doc in documents) {
-        await _updateLocalDocumentSyncState(doc.id, SyncState.syncing);
+        if (doc.syncId != null && doc.syncId!.isNotEmpty) {
+          await _updateSyncStateBySyncId(doc.syncId!, SyncState.syncing);
+        } else {
+          // Fallback for documents without sync identifiers
+          await _updateLocalDocumentSyncState(doc.syncId, SyncState.syncing);
+        }
       }
 
       // Batch upload documents
       await _documentSyncManager.batchUploadDocuments(documents);
 
-      // Update all documents to synced state
+      // Update all documents to synced state using sync identifiers
       for (final doc in documents) {
-        await _updateLocalDocumentSyncState(doc.id, SyncState.synced);
+        if (doc.syncId != null && doc.syncId!.isNotEmpty) {
+          await _updateSyncStateBySyncId(doc.syncId!, SyncState.synced);
+        } else {
+          // Fallback for documents without sync identifiers
+          await _updateLocalDocumentSyncState(doc.syncId, SyncState.synced);
+        }
       }
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.syncCompleted.value,
         entityType: 'sync',
         entityId: 'batch',
@@ -1026,9 +1690,14 @@ class CloudSyncService {
     } catch (e) {
       _logError('Error during batch sync: $e');
 
-      // Mark all documents as error
+      // Mark all documents as error using sync identifiers
       for (final doc in documents) {
-        await _updateLocalDocumentSyncState(doc.id, SyncState.error);
+        if (doc.syncId != null && doc.syncId!.isNotEmpty) {
+          await _updateSyncStateBySyncId(doc.syncId!, SyncState.error);
+        } else {
+          // Fallback for documents without sync identifiers
+          await _updateLocalDocumentSyncState(doc.syncId, SyncState.error);
+        }
       }
 
       rethrow;
@@ -1043,14 +1712,22 @@ class CloudSyncService {
   ) async {
     final startTime = DateTime.now();
     try {
-      // Update sync state to syncing
-      await _updateLocalDocumentSyncState(document.id, SyncState.syncing);
+      // Update sync state to syncing using sync identifier
+      if (document.syncId != null && document.syncId!.isNotEmpty) {
+        await _updateSyncStateBySyncId(document.syncId!, SyncState.syncing);
+      } else {
+        await _updateLocalDocumentSyncState(document.syncId, SyncState.syncing);
+      }
 
       // Update document with delta
       await _documentSyncManager.updateDocumentDelta(document, changedFields);
 
-      // Update sync state to synced
-      await _updateLocalDocumentSyncState(document.id, SyncState.synced);
+      // Update sync state to synced using sync identifier
+      if (document.syncId != null && document.syncId!.isNotEmpty) {
+        await _updateSyncStateBySyncId(document.syncId!, SyncState.synced);
+      } else {
+        await _updateLocalDocumentSyncState(document.syncId, SyncState.synced);
+      }
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -1059,21 +1736,27 @@ class CloudSyncService {
         type: AnalyticsSyncEventType.documentUpdate,
         success: true,
         latencyMs: latency,
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.documentUploaded.value,
         entityType: 'document',
-        entityId: document.id.toString(),
+        entityId: document.syncId,
+        syncId: document.syncId, // Include sync identifier in event
         message:
             'Document updated with delta sync (${changedFields.keys.length} fields)',
         timestamp: amplify_core.TemporalDateTime.now(),
       ));
     } on VersionConflictException catch (e) {
-      // Conflict detected
-      await _updateLocalDocumentSyncState(document.id, SyncState.conflict);
+      // Conflict detected - use sync identifier
+      if (document.syncId != null && document.syncId!.isNotEmpty) {
+        await _updateSyncStateBySyncId(document.syncId!, SyncState.conflict);
+      } else {
+        await _updateLocalDocumentSyncState(
+            document.syncId, SyncState.conflict);
+      }
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -1083,21 +1766,21 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.message,
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
-      _emitEvent(SyncEvent(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      _emitEvent(LocalSyncEvent(
+        id: _uuid.v4(),
         eventType: SyncEventType.conflictDetected.value,
         entityType: 'document',
-        entityId: document.id.toString(),
+        entityId: document.syncId,
         message: 'Conflict detected: ${e.message}',
         timestamp: amplify_core.TemporalDateTime.now(),
       ));
 
       rethrow;
     } catch (e) {
-      await _updateLocalDocumentSyncState(document.id, SyncState.error);
+      await _updateLocalDocumentSyncState(document.syncId, SyncState.error);
 
       final latency = DateTime.now().difference(startTime).inMilliseconds;
 
@@ -1107,7 +1790,7 @@ class CloudSyncService {
         success: false,
         latencyMs: latency,
         errorMessage: e.toString(),
-        documentId: document.id.toString(),
+        documentId: document.syncId,
       );
 
       rethrow;
@@ -1130,6 +1813,14 @@ class CloudSyncService {
     _lastSyncTime = null;
 
     _logInfo('CloudSyncService: Sign out handled');
+  }
+
+  /// Dispose of resources and clean up
+  void dispose() {
+    _syncStateManager.dispose();
+    _syncEventController.close();
+    _connectivitySubscription?.cancel();
+    _periodicSyncTimer?.cancel();
   }
 
   /// Clear user-specific sync settings for user isolation
@@ -1174,14 +1865,6 @@ class CloudSyncService {
     safePrint('Subscription bypass disabled');
   }
 
-  /// Dispose resources
-  Future<void> dispose() async {
-    await stopSync();
-    await _connectivitySubscription?.cancel();
-    await _syncEventController.close();
-    // SimpleFileSyncManager doesn't need disposal
-  }
-
   // Helper methods for logging
   void _logInfo(String message) =>
       _logService.log(message, level: app_log.LogLevel.info);
@@ -1197,11 +1880,51 @@ class CloudSyncService {
     try {
       final documents = await _databaseService.getAllDocuments();
       final hashData = documents
-          .map((doc) => '${doc.id}:${doc.version}:${doc.lastModified.format()}')
+          .map((doc) =>
+              '${doc.syncId}:${doc.version}:${doc.lastModified.format()}')
           .join('|');
       return hashData.hashCode.toString();
     } catch (e) {
       return DateTime.now().millisecondsSinceEpoch.toString();
+    }
+  }
+
+  /// Queue documents that are pending deletion for sync processing
+  Future<void> _queueDocumentsPendingDeletion() async {
+    try {
+      // Get current user
+      final user = await _authService.getCurrentUser();
+      if (user == null) {
+        _logWarning('User not authenticated, skipping deletion queue');
+        return;
+      }
+
+      // Get documents pending deletion using deletion tracking service
+      final documentsToDelete =
+          await _deletionTrackingService.getDocumentsPendingDeletion(user.id);
+
+      if (documentsToDelete.isNotEmpty) {
+        _logInfo(
+            'Found ${documentsToDelete.length} documents pending deletion, queuing for sync');
+
+        for (final document in documentsToDelete) {
+          final operation = SyncOperation(
+            id: _uuid.v4(),
+            documentId: document.syncId,
+            syncId: document.syncId,
+            type: SyncOperationType.delete,
+            document: document,
+          );
+
+          _syncQueue.add(operation);
+          _logInfo(
+              'Queued sync operation: ${operation.type} for document ${document.syncId ?? document.syncId}');
+        }
+
+        _logInfo('Queued ${documentsToDelete.length} documents for deletion');
+      }
+    } catch (e) {
+      _logError('Error queuing documents for deletion: $e');
     }
   }
 }

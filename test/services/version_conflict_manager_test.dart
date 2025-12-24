@@ -4,6 +4,7 @@ import 'package:household_docs_app/models/Document.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'dart:math';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 void main() {
   group('VersionConflictManager', () {
     late VersionConflictManager conflictManager;
@@ -39,9 +40,9 @@ void main() {
           }
 
           final localDocument =
-              _generateRandomDocument(random, documentId, localVersion);
+              _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, localVersion);
           final remoteDocument =
-              _generateRandomDocument(random, documentId, remoteVersion);
+              _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, remoteVersion);
 
           // Detect conflict
           final conflict = conflictManager.detectConflict(
@@ -78,7 +79,7 @@ void main() {
         final documentId = 'test_doc';
 
         // Create documents with different fields
-        final localDoc = _generateRandomDocument(random, documentId, 1);
+        final localDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, 1);
         final remoteDoc = localDoc.copyWith(
           version: 2,
           title: 'Different Title',
@@ -106,7 +107,7 @@ void main() {
         final random = Random();
         final documentId = 'test_doc';
 
-        final localDoc = _generateRandomDocument(random, documentId, 1);
+        final localDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, 1);
         final remoteDoc = localDoc.copyWith(version: 2); // Only version differs
 
         final conflict =
@@ -123,7 +124,7 @@ void main() {
         final random = Random();
         final documentId = 'test_doc';
 
-        final localDoc = _generateRandomDocument(random, documentId, 1);
+        final localDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, 1);
         final remoteDoc = localDoc.copyWith(
           version: 2,
           title: 'Remote Title',
@@ -165,11 +166,11 @@ void main() {
         final documentId = 'test_doc';
 
         // Create conflict with only title difference
-        final localDoc = _generateRandomDocument(random, documentId, 1);
+        final localDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, 1);
         final remoteDoc = localDoc.copyWith(
           version: 2,
           title: 'Different Title',
-          lastModified: TemporalDateTime.now(), // More recent
+          lastModified: amplify_core.TemporalDateTime.now(), // More recent
         );
 
         conflictManager.detectConflict(documentId, localDoc, remoteDoc);
@@ -212,7 +213,7 @@ void main() {
         // Add multiple conflicts
         for (int i = 0; i < 5; i++) {
           final documentId = 'doc_$i';
-          final localDoc = _generateRandomDocument(random, documentId, 1);
+          final localDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, 1);
           final remoteDoc = localDoc.copyWith(version: 2);
 
           conflictManager.detectConflict(documentId, localDoc, remoteDoc);
@@ -236,7 +237,7 @@ void main() {
         // Add some conflicts
         for (int i = 0; i < 3; i++) {
           final documentId = 'doc_$i';
-          final localDoc = _generateRandomDocument(random, documentId, 1);
+          final localDoc = _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), random, documentId, 1);
           final remoteDoc = localDoc.copyWith(version: 2);
 
           conflictManager.detectConflict(documentId, localDoc, remoteDoc);
@@ -259,25 +260,26 @@ void main() {
 }
 
 /// Generate a random document for testing
-Document _generateRandomDocument(
+Document _generateRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
     Random random, String documentId, int version) {
   final titles = ['Invoice', 'Receipt', 'Contract', 'Report', 'Letter'];
   final categories = ['Financial', 'Legal', 'Personal', 'Business', 'Medical'];
 
-  return Document(
-    id: documentId,
-    userId: 'user_${random.nextInt(100)}',
+  return Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+        userId: 'user_${random.nextInt(100)}',
     title: titles[random.nextInt(titles.length)],
     category: categories[random.nextInt(categories.length)],
     filePaths: ['file${random.nextInt(10)}.pdf'],
     renewalDate: random.nextBool()
-        ? TemporalDateTime(
+        ? amplify_core.TemporalDateTime(
             DateTime.now().add(Duration(days: random.nextInt(365))))
         : null,
     notes: random.nextBool() ? 'Random notes ${random.nextInt(1000)}' : null,
-    createdAt: TemporalDateTime(
+    createdAt: amplify_core.TemporalDateTime(
         DateTime.now().subtract(Duration(days: random.nextInt(30)))),
-    lastModified: TemporalDateTime(
+    lastModified: amplify_core.TemporalDateTime(
         DateTime.now().subtract(Duration(hours: random.nextInt(24)))),
     version: version,
     syncState: 'synced',

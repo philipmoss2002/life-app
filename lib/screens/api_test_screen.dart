@@ -181,7 +181,7 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
       // Test session validity
       _log('📋 Checking session validity...');
       final session = await Amplify.Auth.fetchAuthSession();
-      _log('✅ Session is valid: ${session.isSignedIn}');
+      _log('✅ Session is valid');
 
       if (session is CognitoAuthSession) {
         _log(

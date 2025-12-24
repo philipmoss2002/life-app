@@ -12,6 +12,7 @@ import '../services/storage_manager.dart';
 import '../services/authentication_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/subscription_service.dart' as sub;
+import '../services/sync_identifier_service.dart';
 import 'document_detail_screen.dart';
 import 'subscription_plans_screen.dart';
 
@@ -224,6 +225,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         }
 
         final document = Document(
+          syncId: SyncIdentifierService.generateValidated(),
           userId: currentUser.id,
           title: _titleController.text,
           category: selectedCategory,
@@ -238,6 +240,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           syncState: SyncState.notSynced.toJson(),
         );
 
+        debugPrint('🔍 Created document with sync ID: ${document.syncId}');
+        debugPrint('🔍 Document title: ${document.title}');
+
         final id = await DatabaseService.instance.createDocumentWithLabels(
           document,
           fileLabels,
@@ -247,7 +252,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         if (renewalDate != null) {
           try {
             await NotificationService.instance.scheduleRenewalReminder(
-              id,
+              document.syncId,
               _titleController.text,
               renewalDate!,
             );
@@ -259,7 +264,8 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
         // Queue document for cloud sync if user has active subscription
         final documentWithId = Document(
-          id: id.toString(),
+          syncId: document
+              .syncId, // Use the same sync identifier from the original document
           userId: currentUser.id,
           title: _titleController.text,
           category: selectedCategory,
@@ -274,6 +280,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           syncState: SyncState.notSynced.toJson(),
         );
 
+        debugPrint(
+            '🔍 Document with ID created - sync ID: ${documentWithId.syncId}');
+        debugPrint('🔍 Document with ID - title: ${documentWithId.title}');
+        debugPrint('🔍 Document with ID - syncId: ${documentWithId.syncId}');
+
         // Queue for sync (don't let sync errors prevent navigation)
         try {
           await _queueDocumentForSync(documentWithId);
@@ -283,9 +294,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         }
 
         if (mounted) {
-          // Create the saved document with the ID
+          // Create the saved document with the syncId
           final savedDocument = Document(
-            id: id.toString(),
+            syncId: document
+                .syncId, // Use the same sync identifier from the original document
             userId: currentUser.id,
             title: _titleController.text,
             category: selectedCategory,
@@ -476,6 +488,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   /// Queue document for cloud sync if user has active subscription
   Future<void> _queueDocumentForSync(Document document) async {
     try {
+      debugPrint('🔍 _queueDocumentForSync called with document:');
+      debugPrint('🔍   - syncId: ${document.syncId}');
+      debugPrint('🔍   - Title: ${document.title}');
+      debugPrint('🔍   - Sync ID: ${document.syncId}');
+
       // Check if user is authenticated
       final user = await _authService.getCurrentUser();
       if (user == null) {

@@ -46,12 +46,15 @@ class NotificationService {
   }
 
   Future<void> scheduleRenewalReminder(
-      int id, String title, DateTime renewalDate) async {
+      String syncId, String title, DateTime renewalDate) async {
     final reminderDate = renewalDate.subtract(const Duration(days: 7));
 
     if (reminderDate.isAfter(DateTime.now())) {
+      // Use syncId hashCode to generate a consistent integer ID for the notification
+      final notificationId = syncId.hashCode;
+
       await _notifications.zonedSchedule(
-        id,
+        notificationId,
         'Renewal Reminder',
         '$title renewal is due in 7 days',
         tz.TZDateTime.from(reminderDate, tz.local),
@@ -71,8 +74,10 @@ class NotificationService {
     }
   }
 
-  Future<void> cancelReminder(int id) async {
-    await _notifications.cancel(id);
+  Future<void> cancelReminder(String syncId) async {
+    // Use syncId hashCode to generate the same integer ID used for scheduling
+    final notificationId = syncId.hashCode;
+    await _notifications.cancel(notificationId);
   }
 
   /// Show a notification for a sync conflict

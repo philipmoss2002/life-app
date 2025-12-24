@@ -16,7 +16,10 @@ enum SyncState {
   error,
 
   /// Document has a conflict that needs resolution
-  conflict;
+  conflict,
+
+  /// Document is pending deletion from cloud
+  pendingDeletion;
 
   /// Convert enum to JSON string
   String toJson() {
@@ -33,6 +36,8 @@ enum SyncState {
         return 'error';
       case SyncState.conflict:
         return 'conflict';
+      case SyncState.pendingDeletion:
+        return 'pendingDeletion';
     }
   }
 
@@ -51,6 +56,8 @@ enum SyncState {
         return SyncState.error;
       case 'conflict':
         return SyncState.conflict;
+      case 'pendingDeletion':
+        return SyncState.pendingDeletion;
       default:
         return SyncState.notSynced;
     }
@@ -71,6 +78,8 @@ enum SyncState {
         return 'Error';
       case SyncState.conflict:
         return 'Conflict';
+      case SyncState.pendingDeletion:
+        return 'Deleting';
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import '../models/Document.dart';
 import '../models/sync_state.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 /// Strategies for resolving version conflicts
 enum ConflictResolutionStrategy {
   /// Keep the local version and discard remote changes
@@ -260,7 +261,7 @@ class VersionConflictManager {
     // Return the local document with incremented version for sync
     final resolvedDocument = conflict.localDocument.copyWith(
       version: conflict.remoteDocument.version + 1,
-      lastModified: TemporalDateTime.now(),
+      lastModified: amplify_core.TemporalDateTime.now(),
       syncState: SyncState.synced.toJson(),
       conflictId: null, // Clear conflict ID
     );
@@ -282,7 +283,7 @@ class VersionConflictManager {
     // Use the provided merged document with incremented version
     final resolvedDocument = mergedDocument.copyWith(
       version: conflict.remoteDocument.version + 1,
-      lastModified: TemporalDateTime.now(),
+      lastModified: amplify_core.TemporalDateTime.now(),
       syncState: SyncState.synced.toJson(),
       conflictId: null, // Clear conflict ID
     );

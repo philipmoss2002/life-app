@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/device.dart';
+import '../models/Device.dart';
 import '../services/device_management_service.dart';
 
 /// Screen displaying all connected devices

@@ -7,26 +7,24 @@
             "UserPoolId"
           ],
           "category": "auth",
-          "resourceName": "householddocsapp1e3bd268"
+          "resourceName": "householddocsappac35c99f"
         }
       ],
       "output": {
         "authConfig": {
           "additionalAuthenticationProviders": [
             {
-              "apiKeyConfig": {
-                "apiKeyExpirationDate": "2025-12-12T20:46:06.339Z",
-                "apiKeyExpirationDays": 7,
-                "description": "household_docs_app_api_key"
-              },
-              "authenticationType": "API_KEY"
+              "authenticationType": "AMAZON_COGNITO_USER_POOLS",
+              "userPoolConfig": {
+                "userPoolId": "authhouseholddocsappac35c99f"
+              }
             }
           ],
           "defaultAuthentication": {
-            "authenticationType": "AMAZON_COGNITO_USER_POOLS",
-            "userPoolConfig": {
-              "userPoolId": "authhouseholddocsapp1e3bd268"
-            }
+            "apiKeyConfig": {
+              "apiKeyExpirationDays": 7
+            },
+            "authenticationType": "API_KEY"
           }
         }
       },
@@ -35,7 +33,7 @@
     }
   },
   "auth": {
-    "householddocsapp1e3bd268": {
+    "householddocsappac35c99f": {
       "customAuth": false,
       "dependsOn": [],
       "frontendAuthConfig": {
@@ -63,7 +61,7 @@
     }
   },
   "storage": {
-    "fileAttachments": {
+    "s347b21250": {
       "dependsOn": [],
       "providerPlugin": "awscloudformation",
       "service": "S3"

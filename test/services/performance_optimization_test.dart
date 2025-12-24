@@ -19,9 +19,9 @@ void main() {
       cloudSyncService = CloudSyncService();
     });
 
-    tearDown(() async {
-      await fileSyncManager.dispose();
-      await cloudSyncService.dispose();
+    tearDown(() {
+      fileSyncManager.dispose();
+      cloudSyncService.dispose();
     });
 
     group('Batch Document Updates', () {
@@ -33,9 +33,9 @@ void main() {
       test('batchUploadDocuments should upload multiple documents', () async {
         final documents = List.generate(
           5,
-          (i) => Document(
-            id: i.toString(),
-            userId: 'test-user-123',
+          (i) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: 'test-user-123',
             title: 'Document $i',
             category: 'Test',
             filePaths: [],
@@ -56,9 +56,9 @@ void main() {
         // Test with more than 25 documents (DynamoDB batch limit)
         final documents = List.generate(
           30,
-          (i) => Document(
-            id: i.toString(),
-            userId: 'test-user-123',
+          (i) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: 'test-user-123',
             title: 'Document $i',
             category: 'Test',
             filePaths: [],
@@ -78,9 +78,9 @@ void main() {
 
     group('Delta Sync', () {
       test('updateDocumentDelta should update only changed fields', () async {
-        final document = Document(
-          id: '123',
-          userId: 'test-user-123',
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test-user-123',
           title: 'Original Title',
           category: 'Test',
           filePaths: [],
@@ -159,9 +159,9 @@ void main() {
       });
 
       test('updateDocumentDelta should use delta sync', () async {
-        final document = Document(
-          id: '123',
-          userId: 'test-user-123',
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test-user-123',
           title: 'Test Document',
           category: 'Test',
           filePaths: [],

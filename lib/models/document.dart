@@ -27,7 +27,7 @@ import 'package:collection/collection.dart';
 /** This is an auto generated class representing the Document type in your schema. */
 class Document extends amplify_core.Model {
   static const classType = const _DocumentModelType();
-  final String id;
+  final String? _syncId;
   final String? _userId;
   final String? _title;
   final String? _category;
@@ -41,6 +41,7 @@ class Document extends amplify_core.Model {
   final String? _conflictId;
   final bool? _deleted;
   final amplify_core.TemporalDateTime? _deletedAt;
+  final String? _contentHash;
   final List<FileAttachment>? _fileAttachments;
   final amplify_core.TemporalDateTime? _updatedAt;
 
@@ -49,12 +50,34 @@ class Document extends amplify_core.Model {
   
   @Deprecated('[getId] is being deprecated in favor of custom primary key feature. Use getter [modelIdentifier] to get model identifier.')
   @override
-  String getId() => id;
+  String getId() => modelIdentifier.serializeAsString();
   
   DocumentModelIdentifier get modelIdentifier {
+    try {
       return DocumentModelIdentifier(
-        id: id
+        syncId: _syncId!
       );
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
+  }
+  
+  String get syncId {
+    try {
+      return _syncId!;
+    } catch(e) {
+      throw amplify_core.AmplifyCodeGenModelException(
+          amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastExceptionMessage,
+          recoverySuggestion:
+            amplify_core.AmplifyExceptionMessages.codeGenRequiredFieldForceCastRecoverySuggestion,
+          underlyingException: e.toString()
+          );
+    }
   }
   
   String get userId {
@@ -181,6 +204,10 @@ class Document extends amplify_core.Model {
     return _deletedAt;
   }
   
+  String? get contentHash {
+    return _contentHash;
+  }
+  
   List<FileAttachment>? get fileAttachments {
     return _fileAttachments;
   }
@@ -189,11 +216,11 @@ class Document extends amplify_core.Model {
     return _updatedAt;
   }
   
-  const Document._internal({required this.id, required userId, required title, required category, required filePaths, renewalDate, notes, required createdAt, required lastModified, required version, required syncState, conflictId, deleted, deletedAt, fileAttachments, updatedAt}): _userId = userId, _title = title, _category = category, _filePaths = filePaths, _renewalDate = renewalDate, _notes = notes, _createdAt = createdAt, _lastModified = lastModified, _version = version, _syncState = syncState, _conflictId = conflictId, _deleted = deleted, _deletedAt = deletedAt, _fileAttachments = fileAttachments, _updatedAt = updatedAt;
+  const Document._internal({required syncId, required userId, required title, required category, required filePaths, renewalDate, notes, required createdAt, required lastModified, required version, required syncState, conflictId, deleted, deletedAt, contentHash, fileAttachments, updatedAt}): _syncId = syncId, _userId = userId, _title = title, _category = category, _filePaths = filePaths, _renewalDate = renewalDate, _notes = notes, _createdAt = createdAt, _lastModified = lastModified, _version = version, _syncState = syncState, _conflictId = conflictId, _deleted = deleted, _deletedAt = deletedAt, _contentHash = contentHash, _fileAttachments = fileAttachments, _updatedAt = updatedAt;
   
-  factory Document({String? id, required String userId, required String title, required String category, required List<String> filePaths, amplify_core.TemporalDateTime? renewalDate, String? notes, required amplify_core.TemporalDateTime createdAt, required amplify_core.TemporalDateTime lastModified, required int version, required String syncState, String? conflictId, bool? deleted, amplify_core.TemporalDateTime? deletedAt, List<FileAttachment>? fileAttachments}) {
+  factory Document({required String syncId, required String userId, required String title, required String category, required List<String> filePaths, amplify_core.TemporalDateTime? renewalDate, String? notes, required amplify_core.TemporalDateTime createdAt, required amplify_core.TemporalDateTime lastModified, required int version, required String syncState, String? conflictId, bool? deleted, amplify_core.TemporalDateTime? deletedAt, String? contentHash, List<FileAttachment>? fileAttachments}) {
     return Document._internal(
-      id: id == null ? amplify_core.UUID.getUUID() : id,
+      syncId: syncId,
       userId: userId,
       title: title,
       category: category,
@@ -207,6 +234,7 @@ class Document extends amplify_core.Model {
       conflictId: conflictId,
       deleted: deleted,
       deletedAt: deletedAt,
+      contentHash: contentHash,
       fileAttachments: fileAttachments != null ? List<FileAttachment>.unmodifiable(fileAttachments) : fileAttachments);
   }
   
@@ -218,7 +246,7 @@ class Document extends amplify_core.Model {
   bool operator ==(Object other) {
     if (identical(other, this)) return true;
     return other is Document &&
-      id == other.id &&
+      _syncId == other._syncId &&
       _userId == other._userId &&
       _title == other._title &&
       _category == other._category &&
@@ -232,6 +260,7 @@ class Document extends amplify_core.Model {
       _conflictId == other._conflictId &&
       _deleted == other._deleted &&
       _deletedAt == other._deletedAt &&
+      _contentHash == other._contentHash &&
       DeepCollectionEquality().equals(_fileAttachments, other._fileAttachments);
   }
   
@@ -243,7 +272,7 @@ class Document extends amplify_core.Model {
     var buffer = new StringBuffer();
     
     buffer.write("Document {");
-    buffer.write("id=" + "$id" + ", ");
+    buffer.write("syncId=" + "$_syncId" + ", ");
     buffer.write("userId=" + "$_userId" + ", ");
     buffer.write("title=" + "$_title" + ", ");
     buffer.write("category=" + "$_category" + ", ");
@@ -257,15 +286,16 @@ class Document extends amplify_core.Model {
     buffer.write("conflictId=" + "$_conflictId" + ", ");
     buffer.write("deleted=" + (_deleted != null ? _deleted!.toString() : "null") + ", ");
     buffer.write("deletedAt=" + (_deletedAt != null ? _deletedAt!.format() : "null") + ", ");
+    buffer.write("contentHash=" + "$_contentHash" + ", ");
     buffer.write("updatedAt=" + (_updatedAt != null ? _updatedAt!.format() : "null"));
     buffer.write("}");
     
     return buffer.toString();
   }
   
-  Document copyWith({String? userId, String? title, String? category, List<String>? filePaths, amplify_core.TemporalDateTime? renewalDate, String? notes, amplify_core.TemporalDateTime? createdAt, amplify_core.TemporalDateTime? lastModified, int? version, String? syncState, String? conflictId, bool? deleted, amplify_core.TemporalDateTime? deletedAt, List<FileAttachment>? fileAttachments}) {
+  Document copyWith({String? userId, String? title, String? category, List<String>? filePaths, amplify_core.TemporalDateTime? renewalDate, String? notes, amplify_core.TemporalDateTime? createdAt, amplify_core.TemporalDateTime? lastModified, int? version, String? syncState, String? conflictId, bool? deleted, amplify_core.TemporalDateTime? deletedAt, String? contentHash, List<FileAttachment>? fileAttachments}) {
     return Document._internal(
-      id: id,
+      syncId: syncId,
       userId: userId ?? this.userId,
       title: title ?? this.title,
       category: category ?? this.category,
@@ -279,6 +309,7 @@ class Document extends amplify_core.Model {
       conflictId: conflictId ?? this.conflictId,
       deleted: deleted ?? this.deleted,
       deletedAt: deletedAt ?? this.deletedAt,
+      contentHash: contentHash ?? this.contentHash,
       fileAttachments: fileAttachments ?? this.fileAttachments);
   }
   
@@ -296,10 +327,11 @@ class Document extends amplify_core.Model {
     ModelFieldValue<String?>? conflictId,
     ModelFieldValue<bool?>? deleted,
     ModelFieldValue<amplify_core.TemporalDateTime?>? deletedAt,
+    ModelFieldValue<String?>? contentHash,
     ModelFieldValue<List<FileAttachment>?>? fileAttachments
   }) {
     return Document._internal(
-      id: id,
+      syncId: syncId,
       userId: userId == null ? this.userId : userId.value,
       title: title == null ? this.title : title.value,
       category: category == null ? this.category : category.value,
@@ -313,12 +345,13 @@ class Document extends amplify_core.Model {
       conflictId: conflictId == null ? this.conflictId : conflictId.value,
       deleted: deleted == null ? this.deleted : deleted.value,
       deletedAt: deletedAt == null ? this.deletedAt : deletedAt.value,
+      contentHash: contentHash == null ? this.contentHash : contentHash.value,
       fileAttachments: fileAttachments == null ? this.fileAttachments : fileAttachments.value
     );
   }
   
   Document.fromJson(Map<String, dynamic> json)  
-    : id = json['id'],
+    : _syncId = json['syncId'],
       _userId = json['userId'],
       _title = json['title'],
       _category = json['category'],
@@ -332,6 +365,7 @@ class Document extends amplify_core.Model {
       _conflictId = json['conflictId'],
       _deleted = json['deleted'],
       _deletedAt = json['deletedAt'] != null ? amplify_core.TemporalDateTime.fromString(json['deletedAt']) : null,
+      _contentHash = json['contentHash'],
       _fileAttachments = json['fileAttachments']  is Map
         ? (json['fileAttachments']['items'] is List
           ? (json['fileAttachments']['items'] as List)
@@ -348,11 +382,11 @@ class Document extends amplify_core.Model {
       _updatedAt = json['updatedAt'] != null ? amplify_core.TemporalDateTime.fromString(json['updatedAt']) : null;
   
   Map<String, dynamic> toJson() => {
-    'id': id, 'userId': _userId, 'title': _title, 'category': _category, 'filePaths': _filePaths, 'renewalDate': _renewalDate?.format(), 'notes': _notes, 'createdAt': _createdAt?.format(), 'lastModified': _lastModified?.format(), 'version': _version, 'syncState': _syncState, 'conflictId': _conflictId, 'deleted': _deleted, 'deletedAt': _deletedAt?.format(), 'fileAttachments': _fileAttachments?.map((FileAttachment? e) => e?.toJson()).toList(), 'updatedAt': _updatedAt?.format()
+    'syncId': _syncId, 'userId': _userId, 'title': _title, 'category': _category, 'filePaths': _filePaths, 'renewalDate': _renewalDate?.format(), 'notes': _notes, 'createdAt': _createdAt?.format(), 'lastModified': _lastModified?.format(), 'version': _version, 'syncState': _syncState, 'conflictId': _conflictId, 'deleted': _deleted, 'deletedAt': _deletedAt?.format(), 'contentHash': _contentHash, 'fileAttachments': _fileAttachments?.map((FileAttachment? e) => e?.toJson()).toList(), 'updatedAt': _updatedAt?.format()
   };
   
   Map<String, Object?> toMap() => {
-    'id': id,
+    'syncId': _syncId,
     'userId': _userId,
     'title': _title,
     'category': _category,
@@ -366,12 +400,13 @@ class Document extends amplify_core.Model {
     'conflictId': _conflictId,
     'deleted': _deleted,
     'deletedAt': _deletedAt,
+    'contentHash': _contentHash,
     'fileAttachments': _fileAttachments,
     'updatedAt': _updatedAt
   };
 
   static final amplify_core.QueryModelIdentifier<DocumentModelIdentifier> MODEL_IDENTIFIER = amplify_core.QueryModelIdentifier<DocumentModelIdentifier>();
-  static final ID = amplify_core.QueryField(fieldName: "id");
+  static final SYNCID = amplify_core.QueryField(fieldName: "syncId");
   static final USERID = amplify_core.QueryField(fieldName: "userId");
   static final TITLE = amplify_core.QueryField(fieldName: "title");
   static final CATEGORY = amplify_core.QueryField(fieldName: "category");
@@ -385,6 +420,7 @@ class Document extends amplify_core.Model {
   static final CONFLICTID = amplify_core.QueryField(fieldName: "conflictId");
   static final DELETED = amplify_core.QueryField(fieldName: "deleted");
   static final DELETEDAT = amplify_core.QueryField(fieldName: "deletedAt");
+  static final CONTENTHASH = amplify_core.QueryField(fieldName: "contentHash");
   static final FILEATTACHMENTS = amplify_core.QueryField(
     fieldName: "fileAttachments",
     fieldType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.model, ofModelName: 'FileAttachment'));
@@ -395,8 +431,8 @@ class Document extends amplify_core.Model {
     modelSchemaDefinition.authRules = [
       amplify_core.AuthRule(
         authStrategy: amplify_core.AuthStrategy.OWNER,
-        ownerField: "owner",
-        identityClaim: "cognito:username",
+        ownerField: "userId",
+        identityClaim: "sub",
         provider: amplify_core.AuthRuleProvider.USERPOOLS,
         operations: const [
           amplify_core.ModelOperation.CREATE,
@@ -407,10 +443,15 @@ class Document extends amplify_core.Model {
     ];
     
     modelSchemaDefinition.indexes = [
-      amplify_core.ModelIndex(fields: const ["userId"], name: "byUserId")
+      amplify_core.ModelIndex(fields: const ["syncId"], name: null),
+      amplify_core.ModelIndex(fields: const ["userId", "createdAt"], name: "byUserId")
     ];
     
-    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.id());
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: Document.SYNCID,
+      isRequired: true,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
     
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
       key: Document.USERID,
@@ -491,6 +532,12 @@ class Document extends amplify_core.Model {
       ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.dateTime)
     ));
     
+    modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.field(
+      key: Document.CONTENTHASH,
+      isRequired: false,
+      ofType: amplify_core.ModelFieldType(amplify_core.ModelFieldTypeEnum.string)
+    ));
+    
     modelSchemaDefinition.addField(amplify_core.ModelFieldDefinition.hasMany(
       key: Document.FILEATTACHMENTS,
       isRequired: false,
@@ -526,15 +573,15 @@ class _DocumentModelType extends amplify_core.ModelType<Document> {
  * of [Document] in your schema.
  */
 class DocumentModelIdentifier implements amplify_core.ModelIdentifier<Document> {
-  final String id;
+  final String syncId;
 
-  /** Create an instance of DocumentModelIdentifier using [id] the primary key. */
+  /** Create an instance of DocumentModelIdentifier using [syncId] the primary key. */
   const DocumentModelIdentifier({
-    required this.id});
+    required this.syncId});
   
   @override
   Map<String, dynamic> serializeAsMap() => (<String, dynamic>{
-    'id': id
+    'syncId': syncId
   });
   
   @override
@@ -547,7 +594,7 @@ class DocumentModelIdentifier implements amplify_core.ModelIdentifier<Document> 
   String serializeAsString() => serializeAsMap().values.join('#');
   
   @override
-  String toString() => 'DocumentModelIdentifier(id: $id)';
+  String toString() => 'DocumentModelIdentifier(syncId: $syncId)';
   
   @override
   bool operator ==(Object other) {
@@ -556,10 +603,10 @@ class DocumentModelIdentifier implements amplify_core.ModelIdentifier<Document> 
     }
     
     return other is DocumentModelIdentifier &&
-      id == other.id;
+      syncId == other.syncId;
   }
   
   @override
   int get hashCode =>
-    id.hashCode;
+    syncId.hashCode;
 }
