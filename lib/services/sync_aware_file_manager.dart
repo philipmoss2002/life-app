@@ -5,7 +5,7 @@ import 'database_service.dart';
 import 'simple_file_sync_manager.dart';
 import '../models/FileAttachment.dart';
 import 'log_service.dart' as app_log;
-import 'authentication_service.dart';
+import 'sync_identifier_service.dart';
 
 /// File manager that uses sync identifiers for all operations
 class SyncAwareFileManager {
@@ -16,7 +16,6 @@ class SyncAwareFileManager {
 
   final DatabaseService _databaseService = DatabaseService.instance;
   final SimpleFileSyncManager _simpleFileSyncManager = SimpleFileSyncManager();
-  final AuthenticationService _authService = AuthenticationService();
 
   final app_log.LogService _logService = app_log.LogService();
 
@@ -50,10 +49,13 @@ class SyncAwareFileManager {
       final fileName = path.basename(filePath);
       final contentType = _getContentType(fileName);
 
-      // Create file attachment record
+      // Generate unique syncId for this FileAttachment (NOT the document's syncId)
+      final fileAttachmentSyncId = SyncIdentifierService.generateValidated();
+
+      // Create file attachment record with unique syncId
       final attachment = FileAttachment(
         userId: document.userId, // Get userId from the document
-        syncId: syncId,
+        syncId: fileAttachmentSyncId, // Unique syncId for this FileAttachment
         filePath: filePath,
         fileName: fileName,
         label: label,
@@ -64,9 +66,14 @@ class SyncAwareFileManager {
         contentType: contentType,
       );
 
-      // Save to database
-      await _databaseService.addFileToDocumentBySyncId(syncId, filePath, label,
-          s3Key: s3Key);
+      // Save to database with the generated FileAttachment syncId
+      await _databaseService.addFileToDocumentBySyncId(
+        syncId, // Document syncId
+        filePath,
+        label,
+        s3Key: s3Key,
+        fileAttachmentSyncId: fileAttachmentSyncId, // FileAttachment syncId
+      );
 
       _logInfo('✅ File attachment created for sync ID: $syncId');
       return attachment;
@@ -109,9 +116,12 @@ class SyncAwareFileManager {
         final label = fileLabels?[filePath];
         final contentType = _getContentType(fileName);
 
+        // Generate unique syncId for this FileAttachment (NOT the document's syncId)
+        final fileAttachmentSyncId = SyncIdentifierService.generateValidated();
+
         final attachment = FileAttachment(
           userId: document.userId, // Get userId from the document
-          syncId: syncId,
+          syncId: fileAttachmentSyncId, // Unique syncId for this FileAttachment
           filePath: filePath,
           fileName: fileName,
           label: label,
@@ -122,9 +132,14 @@ class SyncAwareFileManager {
           contentType: contentType,
         );
 
-        // Save to database
-        await _databaseService
-            .addFileToDocumentBySyncId(syncId, filePath, label, s3Key: s3Key);
+        // Save to database with the generated FileAttachment syncId
+        await _databaseService.addFileToDocumentBySyncId(
+          syncId, // Document syncId
+          filePath,
+          label,
+          s3Key: s3Key,
+          fileAttachmentSyncId: fileAttachmentSyncId, // FileAttachment syncId
+        );
         attachments.add(attachment);
       }
 
@@ -158,7 +173,7 @@ class SyncAwareFileManager {
 
     try {
       final attachments =
-          await _databaseService.getFileAttachmentsBySyncId(syncId);
+          await _databaseService.getFileAttachmentsByDocumentSyncId(syncId);
       _logInfo(
           '📋 Found ${attachments.length} attachments for sync ID: $syncId');
       return attachments;

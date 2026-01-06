@@ -11,7 +11,6 @@ import '../services/database_service.dart';
 import '../services/notification_service.dart';
 import '../services/conflict_resolution_service.dart';
 import '../services/cloud_sync_service.dart';
-import '../services/sync_identifier_service.dart';
 import 'conflict_resolution_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
@@ -208,74 +207,101 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   Future<void> _saveDocument() async {
     if (_formKey.currentState!.validate()) {
-      final updatedDocument = Document(
-        syncId: SyncIdentifierService.generateValidated(),
-        userId: widget.document.userId,
-        title: _titleController.text,
-        category: selectedCategory,
-        filePaths: filePaths,
-        renewalDate: renewalDate != null
-            ? amplify_core.TemporalDateTime(renewalDate!)
-            : null,
-        notes: _notesController.text.isEmpty ? null : _notesController.text,
-        createdAt: widget.document.createdAt,
-        lastModified: amplify_core.TemporalDateTime.now(),
-        version: widget.document.version + 1,
-        syncState: widget.document.syncState,
-      );
-
-      await DatabaseService.instance.updateDocument(updatedDocument);
-
-      // Update file attachments
-      final db = DatabaseService.instance;
-      final oldFiles = currentDocument.filePaths;
-
-      // Remove files that are no longer in the list
-      for (final oldFile in oldFiles) {
-        if (!filePaths.contains(oldFile)) {
-          await db.removeFileFromDocumentBySyncId(
-              currentDocument.syncId, oldFile);
-        }
-      }
-
-      // Add new files and update labels for all files
-      for (final newFile in filePaths) {
-        if (!oldFiles.contains(newFile)) {
-          // Add new file with label using syncId
-          await db.addFileToDocumentBySyncId(
-              currentDocument.syncId, newFile, fileLabels[newFile]);
-        } else {
-          // Update label for existing file
-          await db.updateFileLabelBySyncId(
-              currentDocument.syncId, newFile, fileLabels[newFile]);
-        }
-      }
-
-      // Cancel old notification and schedule new one if renewal date is set
       try {
-        await NotificationService.instance
-            .cancelReminder(currentDocument.syncId);
-        if (renewalDate != null) {
-          await NotificationService.instance.scheduleRenewalReminder(
-            currentDocument.syncId,
-            _titleController.text,
-            renewalDate!,
+        final updatedDocument = Document(
+          syncId: currentDocument.syncId, // ✅ Keep existing syncId
+          userId: widget.document.userId,
+          title: _titleController.text,
+          category: selectedCategory,
+          filePaths: filePaths,
+          renewalDate: renewalDate != null
+              ? amplify_core.TemporalDateTime(renewalDate!)
+              : null,
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+          createdAt: widget.document.createdAt,
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: widget.document.version + 1,
+          syncState: SyncState.notSynced.toJson(), // Mark as needing sync
+        );
+
+        // Update document in local database
+        final rowsAffected =
+            await DatabaseService.instance.updateDocument(updatedDocument);
+
+        if (rowsAffected == 0) {
+          throw Exception('Failed to update document in local database');
+        }
+
+        // Update file attachments
+        final db = DatabaseService.instance;
+        final oldFiles = currentDocument.filePaths;
+
+        // Remove files that are no longer in the list
+        for (final oldFile in oldFiles) {
+          if (!filePaths.contains(oldFile)) {
+            await db.removeFileFromDocumentBySyncId(
+                currentDocument.syncId, oldFile);
+          }
+        }
+
+        // Add new files and update labels for all files
+        for (final newFile in filePaths) {
+          if (!oldFiles.contains(newFile)) {
+            // Add new file with label using syncId
+            await db.addFileToDocumentBySyncId(
+                currentDocument.syncId, newFile, fileLabels[newFile]);
+          } else {
+            // Update label for existing file
+            await db.updateFileLabelBySyncId(
+                currentDocument.syncId, newFile, fileLabels[newFile]);
+          }
+        }
+
+        // Queue for remote sync
+        try {
+          await CloudSyncService()
+              .queueDocumentSync(updatedDocument, SyncOperationType.update);
+        } catch (e) {
+          debugPrint('Failed to queue document for sync: $e');
+          // Continue - local save succeeded
+        }
+
+        // Cancel old notification and schedule new one if renewal date is set
+        try {
+          await NotificationService.instance
+              .cancelReminder(currentDocument.syncId);
+          if (renewalDate != null) {
+            await NotificationService.instance.scheduleRenewalReminder(
+              currentDocument.syncId,
+              _titleController.text,
+              renewalDate!,
+            );
+          }
+        } catch (e) {
+          // Notification scheduling failed, but continue
+          debugPrint('Failed to update notification: $e');
+        }
+
+        setState(() {
+          currentDocument = updatedDocument;
+          isEditing = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document updated successfully')),
           );
         }
       } catch (e) {
-        // Notification scheduling failed, but continue
-        debugPrint('Failed to update notification: $e');
-      }
-
-      setState(() {
-        currentDocument = updatedDocument;
-        isEditing = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Document updated successfully')),
-        );
+        debugPrint('Error saving document: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save document: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

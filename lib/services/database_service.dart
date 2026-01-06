@@ -386,7 +386,8 @@ class DatabaseService {
     // Insert file attachments
     if (document.filePaths != null && document.filePaths.isNotEmpty) {
       for (final filePath in document.filePaths) {
-        await _addFileAttachment(id, filePath, null, syncId: document.syncId);
+        // Don't pass document.syncId as FileAttachment syncId - let _addFileAttachment generate unique ones
+        await _addFileAttachment(id, filePath, null);
       }
     }
 
@@ -407,7 +408,8 @@ class DatabaseService {
     if (document.filePaths.isNotEmpty) {
       for (final filePath in document.filePaths) {
         final label = fileLabels[filePath];
-        await _addFileAttachment(id, filePath, label, syncId: document.syncId);
+        // Don't pass document.syncId as FileAttachment syncId - let _addFileAttachment generate unique ones
+        await _addFileAttachment(id, filePath, label);
       }
     }
 
@@ -648,10 +650,14 @@ class DatabaseService {
     final documentSyncId =
         docResult.isNotEmpty ? docResult.first['syncId'] as String? : null;
 
+    // Generate a unique syncId for this FileAttachment (NOT the document's syncId)
+    final fileAttachmentSyncId =
+        syncId ?? SyncIdentifierService.generateValidated();
+
     await db.insert('file_attachments', {
       'documentId': documentId,
-      'syncId': syncId,
-      'documentSyncId': documentSyncId,
+      'syncId': fileAttachmentSyncId, // Unique syncId for this FileAttachment
+      'documentSyncId': documentSyncId, // Reference to parent document
       'userId': userId,
       'filePath': filePath,
       'fileName': fileName,
@@ -691,10 +697,11 @@ class DatabaseService {
 
   /// Add file attachment using sync identifier
   Future<void> addFileToDocumentBySyncId(
-      String syncId, String filePath, String? label,
-      {String? s3Key}) async {
+      String documentSyncId, String filePath, String? label,
+      {String? s3Key, String? fileAttachmentSyncId}) async {
     // Validate sync identifier
-    _validateSyncId(syncId, context: 'file attachment by sync ID');
+    _validateSyncId(documentSyncId,
+        context: 'file attachment by document sync ID');
 
     // Validate required fields
     if (filePath.isEmpty) {
@@ -703,23 +710,24 @@ class DatabaseService {
 
     final db = await database;
 
-    // Get the document ID from sync ID
+    // Get the document ID from document sync ID
     final docResult = await db.query(
       'documents',
       columns: ['id'],
       where: 'syncId = ?',
-      whereArgs: [syncId],
+      whereArgs: [documentSyncId],
       limit: 1,
     );
 
     if (docResult.isEmpty) {
       throw ArgumentError(
-          'Document with syncId "$syncId" not found for file attachment');
+          'Document with syncId "$documentSyncId" not found for file attachment');
     }
 
     final documentId = docResult.first['id'] as int;
+    // Pass the FileAttachment syncId to _addFileAttachment
     await _addFileAttachment(documentId, filePath, label,
-        syncId: syncId, s3Key: s3Key);
+        syncId: fileAttachmentSyncId, s3Key: s3Key);
   }
 
   /// Get file attachments by sync identifier
@@ -732,6 +740,23 @@ class DatabaseService {
       'file_attachments',
       where: 'syncId = ?',
       whereArgs: [syncId],
+      orderBy: 'addedAt ASC',
+    );
+    return result.map((map) => FileAttachmentExtensions.fromMap(map)).toList();
+  }
+
+  /// Get file attachments by document sync identifier
+  Future<List<FileAttachment>> getFileAttachmentsByDocumentSyncId(
+      String documentSyncId) async {
+    // Validate sync identifier
+    _validateSyncId(documentSyncId,
+        context: 'file attachments retrieval by document sync ID');
+
+    final db = await database;
+    final result = await db.query(
+      'file_attachments',
+      where: 'documentSyncId = ?',
+      whereArgs: [documentSyncId],
       orderBy: 'addedAt ASC',
     );
     return result.map((map) => FileAttachmentExtensions.fromMap(map)).toList();
@@ -770,49 +795,65 @@ class DatabaseService {
     );
   }
 
-  /// Remove file attachment using sync identifier
+  /// Remove file attachment using document sync identifier and file path
   Future<void> removeFileFromDocumentBySyncId(
-      String syncId, String filePath) async {
+      String documentSyncId, String filePath) async {
     // Validate sync identifier
-    _validateSyncId(syncId, context: 'file removal by sync ID');
+    _validateSyncId(documentSyncId,
+        context: 'file removal by document sync ID');
 
     final db = await database;
     await db.delete(
       'file_attachments',
-      where: 'syncId = ? AND filePath = ?',
-      whereArgs: [syncId, filePath],
+      where: 'documentSyncId = ? AND filePath = ?',
+      whereArgs: [documentSyncId, filePath],
     );
   }
 
-  /// Get file attachments with labels using sync identifier
-  Future<List<FileAttachment>> getFileAttachmentsWithLabelsBySyncId(
-      String syncId) async {
+  /// Remove file attachment using FileAttachment's own sync identifier
+  Future<void> removeFileAttachmentBySyncId(String fileAttachmentSyncId) async {
     // Validate sync identifier
-    _validateSyncId(syncId,
-        context: 'file attachments with labels retrieval by sync ID');
+    _validateSyncId(fileAttachmentSyncId,
+        context: 'file attachment removal by sync ID');
+
+    final db = await database;
+    await db.delete(
+      'file_attachments',
+      where: 'syncId = ?',
+      whereArgs: [fileAttachmentSyncId],
+    );
+  }
+
+  /// Get file attachments with labels using document sync identifier
+  Future<List<FileAttachment>> getFileAttachmentsWithLabelsBySyncId(
+      String documentSyncId) async {
+    // Validate sync identifier
+    _validateSyncId(documentSyncId,
+        context: 'file attachments with labels retrieval by document sync ID');
 
     final db = await database;
     final result = await db.query(
       'file_attachments',
-      where: 'syncId = ?',
-      whereArgs: [syncId],
+      where: 'documentSyncId = ?',
+      whereArgs: [documentSyncId],
       orderBy: 'addedAt ASC',
     );
     return result.map((map) => FileAttachmentExtensions.fromMap(map)).toList();
   }
 
-  /// Update file label using sync identifier
+  /// Update file label using document sync identifier and file path
   Future<int> updateFileLabelBySyncId(
-      String syncId, String filePath, String? label) async {
+      String documentSyncId, String filePath, String? label) async {
     // Validate sync identifier
-    _validateSyncId(syncId, context: 'file label update by sync ID');
+    _validateSyncId(documentSyncId,
+        context: 'file label update by document sync ID');
 
     final db = await database;
     final rowsAffected = await db.update(
       'file_attachments',
       {'label': label},
-      where: 'syncId = ? AND filePath = ?',
-      whereArgs: [syncId, filePath],
+      where: 'documentSyncId = ? AND filePath = ?',
+      whereArgs: [documentSyncId, filePath],
     );
     return rowsAffected;
   }

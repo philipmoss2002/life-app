@@ -280,9 +280,9 @@ class FileAttachmentSyncManager {
       _logInfo('🔄 Starting FileAttachment sync for document: $documentSyncId');
       _logInfo('⏰ Sync started at: ${startTime.toIso8601String()}');
 
-      // Get all local FileAttachments for the document
-      final localAttachments =
-          await _databaseService.getFileAttachmentsBySyncId(documentSyncId);
+      // Get all local FileAttachments for the document by documentSyncId
+      final localAttachments = await _databaseService
+          .getFileAttachmentsByDocumentSyncId(documentSyncId);
 
       if (localAttachments.isEmpty) {
         _logInfo('📋 No FileAttachments found for document: $documentSyncId');

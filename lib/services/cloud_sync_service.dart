@@ -1222,7 +1222,7 @@ class CloudSyncService {
         // Delete files from S3 using FileAttachment records for accurate paths
         try {
           final fileAttachments = await _databaseService
-              .getFileAttachmentsWithLabels(int.parse(document.syncId));
+              .getFileAttachmentsWithLabelsBySyncId(document.syncId);
           if (fileAttachments.isNotEmpty) {
             _logInfo(
                 'Found ${fileAttachments.length} file attachments to delete from S3');
@@ -1280,7 +1280,7 @@ class CloudSyncService {
         // Delete FileAttachment records from local database
         try {
           final fileAttachments = await _databaseService
-              .getFileAttachmentsWithLabels(int.parse(document.syncId));
+              .getFileAttachmentsWithLabelsBySyncId(document.syncId);
           if (fileAttachments.isNotEmpty) {
             _logInfo(
                 'FileAttachments were never synced to DynamoDB, skipping remote deletion');
