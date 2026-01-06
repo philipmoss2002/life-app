@@ -1,22 +1,141 @@
-# This "input" configures a global authorization rule to enable public access to
-# all models in this schema. Learn more about authorization rules here: https://docs.amplify.aws/cli/graphql/authorization-rules
-input AMPLIFY { globalAuthRule: AuthRule = { allow: public } } # FOR TESTING ONLY!
+# GraphQL Schema for Household Docs App Cloud Sync
+# This schema defines the Document and FileAttachment types for cloud synchronization
+# with proper authentication and authorization rules
 
-type Blog @model {
-  id: ID!
-  name: String!
-  posts: [Post] @hasMany
-}
-
-type Post @model {
-  id: ID!
+# Document model - represents a household document
+type Document @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  syncId: String! @primaryKey
+  userId: String! @index(name: "byUserId", sortKeyFields: ["createdAt"])
   title: String!
-  blog: Blog @belongsTo
-  comments: [Comment] @hasMany
+  category: String!
+  filePaths: [String!]!
+  renewalDate: AWSDateTime
+  notes: String
+  createdAt: AWSDateTime!
+  lastModified: AWSDateTime!
+  version: Int!
+  syncState: String!
+  conflictId: String
+  deleted: Boolean
+  deletedAt: AWSDateTime
+  contentHash: String
+  
+  # Relationship: One document has many file attachments
+  fileAttachments: [FileAttachment] @hasMany(indexName: "byDocumentSyncId", fields: ["syncId"])
 }
 
-type Comment @model {
+# FileAttachment model - represents files attached to documents
+type FileAttachment @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  syncId: String! @primaryKey
+  documentSyncId: String! @index(name: "byDocumentSyncId", sortKeyFields: ["addedAt"])
+  userId: String! @index(name: "byUserId", sortKeyFields: ["addedAt"])
+  fileName: String!
+  label: String
+  fileSize: Int!
+  s3Key: String!
+  filePath: String!
+  addedAt: AWSDateTime!
+  contentType: String
+  checksum: String
+  syncState: String!
+  
+  # Relationship: Each file attachment belongs to one document
+  document: Document @belongsTo(fields: ["documentSyncId"])
+}
+
+# DocumentTombstone model - tracks deleted documents to prevent reinstatement
+type DocumentTombstone @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  syncId: String! @primaryKey
+  userId: String! @index(name: "byUserId")
+  deletedAt: AWSDateTime!
+  deletedBy: String!
+  reason: String!
+}
+
+# Device model - tracks devices connected to user account
+type Device @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   id: ID!
-  post: Post @belongsTo
-  content: String!
+  userId: String! @index(name: "byUserId")
+  deviceName: String!
+  deviceType: String!
+  lastSyncTime: AWSDateTime!
+  isActive: Boolean!
+  createdAt: AWSDateTime!
+}
+
+# SyncEvent model - tracks sync events for monitoring
+type SyncEvent @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  id: ID!
+  userId: String! @index(name: "byUserId")
+  eventType: String!
+  entityType: String!
+  entityId: String!
+  message: String
+  timestamp: AWSDateTime!
+  deviceId: String
+}
+
+# SyncState model - tracks overall sync state
+type SyncState @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  id: ID!
+  userId: String! @index(name: "byUserId")
+  lastSyncTime: AWSDateTime!
+  pendingOperations: Int!
+  conflictCount: Int!
+  errorCount: Int!
+}
+
+# UserSubscription model - tracks user subscription status
+type UserSubscription @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  id: ID!
+  userId: String!
+  planId: String!
+  status: SubscriptionStatus!
+  startDate: AWSDateTime!
+  endDate: AWSDateTime
+  autoRenew: Boolean!
+  storageQuotaGB: Int!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+# Enum for subscription status
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  GRACE_PERIOD
+  TRIAL
+}
+
+# StorageUsage model - tracks user's storage usage
+type StorageUsage @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  id: ID!
+  userId: String!
+  usedBytes: Int!
+  quotaBytes: Int!
+  documentCount: Int!
+  fileCount: Int!
+  lastCalculated: AWSDateTime!
+}
+
+# Conflict model - tracks sync conflicts (optional, for manual resolution)
+type Conflict @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
+  id: ID!
+  userId: String! @index(name: "byUserId")
+  entityType: String!
+  entityId: String!
+  localVersion: AWSJSON!
+  remoteVersion: AWSJSON!
+  detectedAt: AWSDateTime!
+  resolvedAt: AWSDateTime
+  resolution: ConflictResolution
+}
+
+# Enum for conflict resolution strategy
+enum ConflictResolution {
+  KEEP_LOCAL
+  KEEP_REMOTE
+  MERGE
+  MANUAL
 }

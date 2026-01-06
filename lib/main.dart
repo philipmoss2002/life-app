@@ -5,6 +5,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'screens/home_screen.dart';
 import 'services/database_service.dart';
 import 'services/notification_service.dart';
+import 'services/subscription_service.dart';
 import 'providers/auth_provider.dart';
 import 'services/amplify_service.dart';
 
@@ -30,11 +31,27 @@ void main() async {
     debugPrint('Failed to initialize notifications: $e');
   }
 
+  // Initialize subscription service
+  _initializeSubscriptionService();
+
   // Start the app immediately
   runApp(const HouseholdDocsApp());
 
   // Initialize Amplify in the background (non-blocking)
   _initializeAmplifyInBackground();
+}
+
+void _initializeSubscriptionService() {
+  Future.delayed(Duration.zero, () async {
+    try {
+      debugPrint('Initializing subscription service...');
+      await SubscriptionService().initialize();
+      debugPrint('Subscription service initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize subscription service: $e');
+      debugPrint('Subscription features may not work properly');
+    }
+  });
 }
 
 void _initializeAmplifyInBackground() {

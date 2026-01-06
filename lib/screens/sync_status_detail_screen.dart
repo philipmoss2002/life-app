@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/document.dart';
+import '../models/Document.dart';
 import '../models/sync_state.dart';
 import '../services/cloud_sync_service.dart';
 
@@ -90,10 +90,10 @@ class _SyncStatusDetailScreenState extends State<SyncStatusDetailScreen> {
                   const SizedBox(height: 16),
                   _buildSyncDetailsCard(),
                   const SizedBox(height: 16),
-                  if (widget.document.syncState == SyncState.error)
+                  if (widget.document.syncState == SyncState.error.toJson())
                     _buildErrorCard(),
-                  if (widget.document.syncState == SyncState.error ||
-                      widget.document.syncState == SyncState.pending)
+                  if (widget.document.syncState == SyncState.error.toJson() ||
+                      widget.document.syncState == SyncState.pending.toJson())
                     _buildRetryButton(),
                 ],
               ),
@@ -191,7 +191,7 @@ class _SyncStatusDetailScreenState extends State<SyncStatusDetailScreen> {
             const SizedBox(height: 16),
             _buildDetailRow(
               'Last Modified',
-              _formatDateTime(widget.document.lastModified),
+              _formatDateTime(widget.document.lastModified.getDateTimeInUtc()),
             ),
             const Divider(),
             _buildDetailRow(
@@ -291,7 +291,8 @@ class _SyncStatusDetailScreenState extends State<SyncStatusDetailScreen> {
     );
   }
 
-  Map<String, dynamic> _getSyncStateInfo(SyncState state) {
+  Map<String, dynamic> _getSyncStateInfo(String stateString) {
+    final state = SyncState.fromJson(stateString);
     switch (state) {
       case SyncState.synced:
         return {
@@ -328,6 +329,12 @@ class _SyncStatusDetailScreenState extends State<SyncStatusDetailScreen> {
           'icon': Icons.cloud_off,
           'label': 'Not Synced',
           'color': Colors.grey,
+        };
+      case SyncState.pendingDeletion:
+        return {
+          'icon': Icons.delete_outline,
+          'label': 'Deleting',
+          'color': Colors.red,
         };
     }
   }

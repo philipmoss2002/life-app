@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_storage_s3/amplify_storage_s3.dart';
-import 'package:amplify_datastore/amplify_datastore.dart';
+import 'package:amplify_api/amplify_api.dart';
+
 import '../config/amplify_config.dart' as config;
-import '../models/ModelProvider.dart';
 import '../amplifyconfiguration.dart';
 import 'security_config_service.dart';
 
@@ -68,17 +68,11 @@ class AmplifyService {
       await Amplify.addPlugin(AmplifyAuthCognito());
       safePrint('Auth plugin added');
 
-      // Add DataStore plugin
-      // NOTE: Using placeholder ModelProvider until 'amplify push' generates real models
-      try {
-        await Amplify.addPlugin(
-          AmplifyDataStore(modelProvider: ModelProvider.instance),
-        );
-        safePrint('DataStore plugin added');
-      } catch (e) {
-        safePrint(
-            'DataStore plugin not added (will be configured after amplify push): $e');
-      }
+      // Add API plugin (required for GraphQL sync)
+      await Amplify.addPlugin(AmplifyAPI());
+      safePrint('API plugin added');
+
+      // DataStore plugin removed - using local SQLite database instead
 
       // Add Storage plugin
       await Amplify.addPlugin(AmplifyStorageS3());
@@ -92,5 +86,19 @@ class AmplifyService {
   /// Reset Amplify configuration (useful for testing)
   Future<void> reset() async {
     _isConfigured = false;
+  }
+
+  /// Force reinitialize Amplify (for debugging)
+  /// Note: This will only work if Amplify hasn't been configured yet in this session
+  Future<void> forceReinitialize() async {
+    if (Amplify.isConfigured) {
+      safePrint(
+          'Amplify is already configured in this session. App restart required for changes.');
+      throw Exception(
+          'Amplify already configured. Restart app to apply plugin changes.');
+    }
+
+    _isConfigured = false;
+    await initialize();
   }
 }

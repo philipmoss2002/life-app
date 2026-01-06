@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'analytics_service.dart';
+import 'auth_token_manager.dart';
+import 'realtime_sync_service.dart';
 
 /// Enum representing the authentication state
 enum AuthState {
@@ -34,6 +36,8 @@ class AuthenticationService {
   final StreamController<AuthState> _authStateController =
       StreamController<AuthState>.broadcast();
   final AnalyticsService _analyticsService = AnalyticsService();
+  final AuthTokenManager _authTokenManager = AuthTokenManager();
+  final RealtimeSyncService _realtimeSyncService = RealtimeSyncService();
 
   /// Stream of authentication state changes
   Stream<AuthState> get authStateChanges => _authStateController.stream;
@@ -128,7 +132,15 @@ class AuthenticationService {
   /// Clears all authentication tokens and stops synchronization
   Future<void> signOut() async {
     try {
-      await Amplify.Auth.signOut();
+      // Stop all sync operations before signing out
+      await _realtimeSyncService.handleSignOut();
+      await _authTokenManager.handleSignOut();
+
+      // Force global sign out to clear all sessions
+      await Amplify.Auth.signOut(
+        options: const SignOutOptions(globalSignOut: true),
+      );
+
       _authStateController.add(AuthState.unauthenticated);
 
       // Track sign out
@@ -137,9 +149,18 @@ class AuthenticationService {
         success: true,
       );
 
-      safePrint('User signed out successfully');
+      safePrint('User signed out successfully with global sign out');
     } on AuthException catch (e) {
       safePrint('Error signing out: ${e.message}');
+
+      // Even if Amplify sign-out fails, we should still clean up local state
+      try {
+        await _realtimeSyncService.handleSignOut();
+        await _authTokenManager.handleSignOut();
+        _authStateController.add(AuthState.unauthenticated);
+      } catch (cleanupError) {
+        safePrint('Error during sign-out cleanup: $cleanupError');
+      }
 
       // Track failed sign out
       await _analyticsService.trackAuthEvent(
@@ -266,6 +287,60 @@ class AuthenticationService {
       id: userId ?? '',
       email: email ?? '',
     );
+  }
+
+  /// Delete the current user account (GDPR compliance)
+  /// This permanently deletes the user from AWS Cognito
+  Future<void> deleteUserAccount() async {
+    try {
+      await Amplify.Auth.deleteUser();
+      _authStateController.add(AuthState.unauthenticated);
+
+      // Track account deletion
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.accountDeleted,
+        success: true,
+      );
+
+      safePrint('User account deleted successfully');
+    } on AuthException catch (e) {
+      safePrint('Error deleting user account: ${e.message}');
+
+      // Track failed account deletion
+      await _analyticsService.trackAuthEvent(
+        type: AuthEventType.accountDeleted,
+        success: false,
+        errorMessage: e.message,
+      );
+
+      rethrow;
+    }
+  }
+
+  /// Force clear all authentication state and sessions
+  /// Use this when experiencing session mix-up issues
+  Future<void> forceSignOutAndClearState() async {
+    try {
+      safePrint('Force clearing all authentication state');
+
+      // Clear all local state first
+      await _realtimeSyncService.handleSignOut();
+      await _authTokenManager.handleSignOut();
+
+      // Force global sign out
+      await Amplify.Auth.signOut(
+        options: const SignOutOptions(globalSignOut: true),
+      );
+
+      // Clear auth state
+      _authStateController.add(AuthState.unauthenticated);
+
+      safePrint('Successfully force cleared all authentication state');
+    } catch (e) {
+      safePrint('Error during force sign out: $e');
+      // Still clear local state even if remote sign out fails
+      _authStateController.add(AuthState.unauthenticated);
+    }
   }
 
   /// Dispose resources

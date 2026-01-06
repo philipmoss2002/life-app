@@ -7,7 +7,7 @@ export type AmplifyDependentResourcesAttributes = {
     }
   },
   "auth": {
-    "householddocsapp1e3bd268": {
+    "householddocsappac35c99f": {
       "AppClientID": "string",
       "AppClientIDWeb": "string",
       "IdentityPoolId": "string",
@@ -18,7 +18,7 @@ export type AmplifyDependentResourcesAttributes = {
     }
   },
   "storage": {
-    "fileAttachments": {
+    "s347b21250": {
       "BucketName": "string",
       "Region": "string"
     }

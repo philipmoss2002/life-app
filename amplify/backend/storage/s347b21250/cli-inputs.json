@@ -1,0 +1,14 @@
+{
+  "resourceName": "s347b21250",
+  "policyUUID": "47b21250",
+  "bucketName": "householddocsapp9f4f55b3c6c94dc9a01229ca901e486",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ",
+    "DELETE"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}

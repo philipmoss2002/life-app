@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:pdfx/pdfx.dart';
-import '../models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import '../models/Document.dart';
 import '../models/sync_state.dart';
-import '../models/conflict.dart';
+
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
 import '../services/conflict_resolution_service.dart';
+import '../services/cloud_sync_service.dart';
 import 'conflict_resolution_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
@@ -46,23 +48,21 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     _titleController = TextEditingController(text: currentDocument.title);
     _notesController = TextEditingController(text: currentDocument.notes ?? '');
     selectedCategory = currentDocument.category;
-    renewalDate = currentDocument.renewalDate;
+    renewalDate = currentDocument.renewalDate?.getDateTimeInUtc();
     filePaths = List.from(currentDocument.filePaths);
     fileLabels = {};
     _loadFileLabels();
   }
 
   Future<void> _loadFileLabels() async {
-    if (currentDocument.id != null) {
-      final attachments = await DatabaseService.instance
-          .getFileAttachmentsWithLabels(currentDocument.id!);
-      setState(() {
-        fileLabels = {
-          for (var attachment in attachments)
-            attachment.filePath: attachment.label
-        };
-      });
-    }
+    final attachments = await DatabaseService.instance
+        .getFileAttachmentsWithLabelsBySyncId(currentDocument.syncId);
+    setState(() {
+      fileLabels = {
+        for (var attachment in attachments)
+          attachment.filePath: attachment.label
+      };
+    });
   }
 
   @override
@@ -155,40 +155,39 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       });
 
       // Update in database if document is saved
-      if (currentDocument.id != null) {
-        try {
-          final rowsAffected = await DatabaseService.instance.updateFileLabel(
-            currentDocument.id!,
-            filePath,
-            result.isEmpty ? null : result,
-          );
+      try {
+        final rowsAffected =
+            await DatabaseService.instance.updateFileLabelBySyncId(
+          currentDocument.syncId,
+          filePath,
+          result.isEmpty ? null : result,
+        );
 
-          if (rowsAffected == 0 && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Warning: Label may not have been saved'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          } else if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Label saved successfully'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 1),
-              ),
-            );
-          }
-        } catch (e) {
-          debugPrint('Error updating label: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to save label: $e'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
+        if (rowsAffected == 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Warning: Label may not have been saved'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Label saved successfully'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error updating label: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save label: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     }
@@ -208,66 +207,101 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   Future<void> _saveDocument() async {
     if (_formKey.currentState!.validate()) {
-      final updatedDocument = Document(
-        id: widget.document.id,
-        title: _titleController.text,
-        category: selectedCategory,
-        filePaths: filePaths,
-        renewalDate: renewalDate,
-        notes: _notesController.text.isEmpty ? null : _notesController.text,
-        createdAt: widget.document.createdAt,
-      );
-
-      await DatabaseService.instance.updateDocument(updatedDocument);
-
-      // Update file attachments
-      final db = DatabaseService.instance;
-      final oldFiles = currentDocument.filePaths;
-
-      // Remove files that are no longer in the list
-      for (final oldFile in oldFiles) {
-        if (!filePaths.contains(oldFile)) {
-          await db.removeFileFromDocument(currentDocument.id!, oldFile);
-        }
-      }
-
-      // Add new files and update labels for all files
-      for (final newFile in filePaths) {
-        if (!oldFiles.contains(newFile)) {
-          // Add new file with label
-          await db.addFileToDocument(
-              currentDocument.id!, newFile, fileLabels[newFile]);
-        } else {
-          // Update label for existing file
-          await db.updateFileLabel(
-              currentDocument.id!, newFile, fileLabels[newFile]);
-        }
-      }
-
-      // Cancel old notification and schedule new one if renewal date is set
       try {
-        await NotificationService.instance.cancelReminder(currentDocument.id!);
-        if (renewalDate != null) {
-          await NotificationService.instance.scheduleRenewalReminder(
-            currentDocument.id!,
-            _titleController.text,
-            renewalDate!,
+        final updatedDocument = Document(
+          syncId: currentDocument.syncId, // ✅ Keep existing syncId
+          userId: widget.document.userId,
+          title: _titleController.text,
+          category: selectedCategory,
+          filePaths: filePaths,
+          renewalDate: renewalDate != null
+              ? amplify_core.TemporalDateTime(renewalDate!)
+              : null,
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+          createdAt: widget.document.createdAt,
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: widget.document.version + 1,
+          syncState: SyncState.notSynced.toJson(), // Mark as needing sync
+        );
+
+        // Update document in local database
+        final rowsAffected =
+            await DatabaseService.instance.updateDocument(updatedDocument);
+
+        if (rowsAffected == 0) {
+          throw Exception('Failed to update document in local database');
+        }
+
+        // Update file attachments
+        final db = DatabaseService.instance;
+        final oldFiles = currentDocument.filePaths;
+
+        // Remove files that are no longer in the list
+        for (final oldFile in oldFiles) {
+          if (!filePaths.contains(oldFile)) {
+            await db.removeFileFromDocumentBySyncId(
+                currentDocument.syncId, oldFile);
+          }
+        }
+
+        // Add new files and update labels for all files
+        for (final newFile in filePaths) {
+          if (!oldFiles.contains(newFile)) {
+            // Add new file with label using syncId
+            await db.addFileToDocumentBySyncId(
+                currentDocument.syncId, newFile, fileLabels[newFile]);
+          } else {
+            // Update label for existing file
+            await db.updateFileLabelBySyncId(
+                currentDocument.syncId, newFile, fileLabels[newFile]);
+          }
+        }
+
+        // Queue for remote sync
+        try {
+          await CloudSyncService()
+              .queueDocumentSync(updatedDocument, SyncOperationType.update);
+        } catch (e) {
+          debugPrint('Failed to queue document for sync: $e');
+          // Continue - local save succeeded
+        }
+
+        // Cancel old notification and schedule new one if renewal date is set
+        try {
+          await NotificationService.instance
+              .cancelReminder(currentDocument.syncId);
+          if (renewalDate != null) {
+            await NotificationService.instance.scheduleRenewalReminder(
+              currentDocument.syncId,
+              _titleController.text,
+              renewalDate!,
+            );
+          }
+        } catch (e) {
+          // Notification scheduling failed, but continue
+          debugPrint('Failed to update notification: $e');
+        }
+
+        setState(() {
+          currentDocument = updatedDocument;
+          isEditing = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document updated successfully')),
           );
         }
       } catch (e) {
-        // Notification scheduling failed, but continue
-        debugPrint('Failed to update notification: $e');
-      }
-
-      setState(() {
-        currentDocument = updatedDocument;
-        isEditing = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Document updated successfully')),
-        );
+        debugPrint('Error saving document: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save document: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -308,7 +342,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   _titleController.text = currentDocument.title;
                   _notesController.text = currentDocument.notes ?? '';
                   selectedCategory = currentDocument.category;
-                  renewalDate = currentDocument.renewalDate;
+                  renewalDate = currentDocument.renewalDate?.getDateTimeInUtc();
                   filePaths = List.from(currentDocument.filePaths);
                 });
               },
@@ -321,7 +355,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             // Conflict resolution banner
-            if (currentDocument.syncState == SyncState.conflict)
+            if (currentDocument.syncState == SyncState.conflict.toJson())
               _buildConflictBanner(),
             if (isEditing) ...[
               TextFormField(
@@ -486,7 +520,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
               if (currentDocument.renewalDate != null)
                 _buildInfoCard(
                   _getDateLabel(currentDocument.category),
-                  '${currentDocument.renewalDate!.day}/${currentDocument.renewalDate!.month}/${currentDocument.renewalDate!.year}',
+                  _formatDate(currentDocument.renewalDate!.getDateTimeInUtc()),
                 ),
               if (currentDocument.filePaths.isNotEmpty) ...[
                 Card(
@@ -564,7 +598,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 _buildInfoCard('Notes', currentDocument.notes!),
               _buildInfoCard(
                 'Created',
-                '${currentDocument.createdAt.day}/${currentDocument.createdAt.month}/${currentDocument.createdAt.year}',
+                _formatDate(currentDocument.createdAt.getDateTimeInUtc()),
               ),
             ],
           ],
@@ -832,16 +866,17 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     final conflicts = await conflictService.getActiveConflicts();
 
     final conflict = conflicts.firstWhere(
-      (c) => c.documentId == currentDocument.id.toString(),
+      (c) => c.documentId == currentDocument.syncId.toString(),
       orElse: () {
         // If no conflict found in service, create a mock one for UI purposes
         // In real scenario, this should be fetched from the sync service
-        return Conflict(
-          id: 'temp_${currentDocument.id}',
-          documentId: currentDocument.id.toString(),
-          localVersion: currentDocument,
-          remoteVersion: currentDocument, // This should come from remote
-          type: ConflictType.documentModified,
+        return DocumentConflict(
+          id: 'conflict_${DateTime.now().millisecondsSinceEpoch}',
+          documentId: currentDocument.syncId.toString(),
+          localDocument: currentDocument,
+          remoteDocument: currentDocument, // This should come from remote
+          type: ConflictType.concurrentModification,
+          detectedAt: DateTime.now(),
         );
       },
     );
@@ -859,7 +894,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         _titleController.text = result.title;
         _notesController.text = result.notes ?? '';
         selectedCategory = result.category;
-        renewalDate = result.renewalDate;
+        renewalDate = result.renewalDate?.getDateTimeInUtc();
         filePaths = List.from(result.filePaths);
       });
 
@@ -892,11 +927,34 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
-      await DatabaseService.instance.deleteDocument(currentDocument.id!);
-      await NotificationService.instance.cancelReminder(currentDocument.id!);
+      // Mark document as pending deletion instead of deleting immediately
+      final deletionPendingDocument = currentDocument.copyWith(
+        syncState: SyncState.pendingDeletion.toJson(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+      );
+
+      // Update document in local database with pending deletion state
+      await DatabaseService.instance.updateDocument(deletionPendingDocument);
+
+      // Cancel any scheduled reminders
+      await NotificationService.instance.cancelReminder(currentDocument.syncId);
+
+      // Queue document for deletion from remote storage
+      try {
+        await CloudSyncService().queueDocumentSync(
+            deletionPendingDocument, SyncOperationType.delete);
+      } catch (e) {
+        // Log error but don't prevent local deletion
+        debugPrint('Failed to queue document for remote deletion: $e');
+      }
+
       if (mounted) {
         Navigator.pop(context);
       }
     }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }

@@ -5,6 +5,7 @@ import 'package:household_docs_app/services/security_config_service.dart';
 import 'package:household_docs_app/services/encryption_config_service.dart';
 import 'package:household_docs_app/services/access_control_service.dart';
 
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 /// **Feature: cloud-sync-premium, Property 7: Encryption in Transit**
 /// **Validates: Requirements 7.1**
 ///
@@ -234,7 +235,7 @@ void main() {
 
       // Without authentication, should return false
       final canAccess =
-          await accessControl.canAccessDocument(documentId, userId);
+          await accessControl.canAccessDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId, userId);
       expect(canAccess, isFalse,
           reason: 'Should deny access when not authenticated');
     });
@@ -291,7 +292,7 @@ void main() {
       // Simulate access check (without actual authentication)
       // The logic should ensure user1 cannot access user2's documents
       final canUser1AccessUser2Doc =
-          await accessControl.canAccessDocument(documentId, user2Id);
+          await accessControl.canAccessDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: amplify_core.TemporalDateTime.now(), lastModified: amplify_core.TemporalDateTime.now(), version: 1, syncState: "pending"), documentId, user2Id);
 
       // Should be false because we're not authenticated as user2
       expect(canUser1AccessUser2Doc, isFalse,

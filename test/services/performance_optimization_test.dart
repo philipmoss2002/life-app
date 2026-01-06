@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/services/document_sync_manager.dart';
 import 'package:household_docs_app/services/file_sync_manager.dart';
 import 'package:household_docs_app/services/cloud_sync_service.dart';
@@ -18,9 +19,9 @@ void main() {
       cloudSyncService = CloudSyncService();
     });
 
-    tearDown(() async {
-      await fileSyncManager.dispose();
-      await cloudSyncService.dispose();
+    tearDown(() {
+      fileSyncManager.dispose();
+      cloudSyncService.dispose();
     });
 
     group('Batch Document Updates', () {
@@ -32,13 +33,17 @@ void main() {
       test('batchUploadDocuments should upload multiple documents', () async {
         final documents = List.generate(
           5,
-          (i) => Document(
-            id: i,
-            userId: 'test-user-123',
+          (i) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: 'test-user-123',
             title: 'Document $i',
             category: 'Test',
-            createdAt: DateTime.now(),
-            lastModified: DateTime.now(),
+            filePaths: [],
+            syncState: 'notSynced',
+            createdAt: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
+            lastModified: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
             version: 1,
           ),
         );
@@ -51,13 +56,17 @@ void main() {
         // Test with more than 25 documents (DynamoDB batch limit)
         final documents = List.generate(
           30,
-          (i) => Document(
-            id: i,
-            userId: 'test-user-123',
+          (i) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                        userId: 'test-user-123',
             title: 'Document $i',
             category: 'Test',
-            createdAt: DateTime.now(),
-            lastModified: DateTime.now(),
+            filePaths: [],
+            syncState: 'notSynced',
+            createdAt: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
+            lastModified: amplify_core.TemporalDateTime.fromString(
+                DateTime.now().toIso8601String()),
             version: 1,
           ),
         );
@@ -69,13 +78,17 @@ void main() {
 
     group('Delta Sync', () {
       test('updateDocumentDelta should update only changed fields', () async {
-        final document = Document(
-          id: 123,
-          userId: 'test-user-123',
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test-user-123',
           title: 'Original Title',
           category: 'Test',
-          createdAt: DateTime.now(),
-          lastModified: DateTime.now(),
+          filePaths: [],
+          syncState: 'notSynced',
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
           version: 1,
         );
 
@@ -146,13 +159,17 @@ void main() {
       });
 
       test('updateDocumentDelta should use delta sync', () async {
-        final document = Document(
-          id: 123,
-          userId: 'test-user-123',
+        final document = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: 'test-user-123',
           title: 'Test Document',
           category: 'Test',
-          createdAt: DateTime.now(),
-          lastModified: DateTime.now(),
+          filePaths: [],
+          syncState: 'notSynced',
+          createdAt: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
+          lastModified: amplify_core.TemporalDateTime.fromString(
+              DateTime.now().toIso8601String()),
           version: 1,
         );
 

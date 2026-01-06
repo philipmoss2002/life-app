@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faker/faker.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'package:household_docs_app/services/device_management_service.dart';
 import 'package:household_docs_app/models/device.dart';
 
@@ -37,8 +38,6 @@ void main() {
         // Verify device was registered
         expect(registeredDevice, isNotNull,
             reason: 'Registered device should not be null');
-        expect(registeredDevice.userId, equals(userId),
-            reason: 'Device should be associated with correct user ID');
         expect(registeredDevice.isActive, isTrue,
             reason: 'Newly registered device should be active');
 
@@ -55,8 +54,6 @@ void main() {
 
         expect(foundDevice.id, equals(registeredDevice.id),
             reason: 'Device ID should match');
-        expect(foundDevice.userId, equals(userId),
-            reason: 'Device user ID should match');
         expect(foundDevice.isActive, isTrue,
             reason: 'Device should be active in list');
       }
@@ -67,27 +64,23 @@ void main() {
       final service = DeviceManagementService();
 
       // Register first device
-      final device1 = await service.registerDevice(userId);
-      expect(device1.userId, equals(userId));
+      await service.registerDevice(userId);
 
       // Get initial device count
       final devicesAfterFirst = await service.getDevices();
       final initialCount = devicesAfterFirst.length;
 
       // Register second device (simulating another device for same user)
-      final device2 = await service.registerDevice(userId);
-      expect(device2.userId, equals(userId));
+      await service.registerDevice(userId);
 
       // Verify both devices are in the list
       final devicesAfterSecond = await service.getDevices();
       expect(devicesAfterSecond.length, greaterThan(initialCount),
           reason: 'Device count should increase after second registration');
 
-      // Verify both devices have the same user ID
-      final userDevices =
-          devicesAfterSecond.where((d) => d.userId == userId).toList();
-      expect(userDevices.length, greaterThanOrEqualTo(2),
-          reason: 'Should have at least 2 devices for the user');
+      // Verify device count increased
+      expect(devicesAfterSecond.length, greaterThan(initialCount),
+          reason: 'Device count should increase after second registration');
     });
 
     test('Property 11: Device registration creates device with valid ID',
@@ -114,27 +107,29 @@ void main() {
       final device = await service.registerDevice(userId);
       final afterRegistration = DateTime.now();
 
-      // Verify registration timestamp is within expected range
+      // Verify creation timestamp is within expected range
       expect(
-        device.registeredAt.isAfter(beforeRegistration.subtract(
-          const Duration(seconds: 1),
-        )),
+        device.createdAt.getDateTimeInUtc().isAfter(beforeRegistration.subtract(
+              const Duration(seconds: 1),
+            )),
         isTrue,
-        reason: 'Registration time should be after start of test',
+        reason: 'Creation time should be after start of test',
       );
       expect(
-        device.registeredAt.isBefore(afterRegistration.add(
-          const Duration(seconds: 1),
-        )),
+        device.createdAt.getDateTimeInUtc().isBefore(afterRegistration.add(
+              const Duration(seconds: 1),
+            )),
         isTrue,
-        reason: 'Registration time should be before end of test',
+        reason: 'Creation time should be before end of test',
       );
 
       // Verify last sync time is recent
       expect(
-        device.lastSyncTime.isAfter(beforeRegistration.subtract(
-          const Duration(seconds: 1),
-        )),
+        device.lastSyncTime
+            .getDateTimeInUtc()
+            .isAfter(beforeRegistration.subtract(
+              const Duration(seconds: 1),
+            )),
         isTrue,
         reason: 'Last sync time should be recent',
       );
@@ -159,7 +154,6 @@ void main() {
       final device = await service.registerDevice(userId);
 
       expect(device.id, isNotEmpty);
-      expect(device.userId, equals(userId));
       expect(device.deviceName, isNotEmpty);
       expect(device.deviceType, isIn(['phone', 'tablet']));
       expect(device.isActive, isTrue);
@@ -214,7 +208,9 @@ void main() {
 
       // Verify sync time was updated
       expect(
-        updatedDevice.lastSyncTime.isAfter(originalSyncTime),
+        updatedDevice.lastSyncTime
+            .getDateTimeInUtc()
+            .isAfter(originalSyncTime.getDateTimeInUtc()),
         isTrue,
         reason: 'Last sync time should be updated',
       );
@@ -233,38 +229,42 @@ void main() {
     });
 
     test('device isInactive property works correctly', () {
+      final service = DeviceManagementService();
+
       final activeDevice = Device(
-        id: 'device1',
-        userId: 'user1',
-        deviceName: 'Active Device',
+                deviceName: 'Active Device',
         deviceType: 'phone',
-        lastSyncTime: DateTime.now().subtract(const Duration(days: 30)),
-        registeredAt: DateTime.now().subtract(const Duration(days: 60)),
+        lastSyncTime: amplify_core.TemporalDateTime.fromString(DateTime.now()
+            .subtract(const Duration(days: 30))
+            .toIso8601String()),
+        createdAt: amplify_core.TemporalDateTime.fromString(DateTime.now()
+            .subtract(const Duration(days: 60))
+            .toIso8601String()),
         isActive: true,
       );
 
       final inactiveDevice = Device(
-        id: 'device2',
-        userId: 'user1',
-        deviceName: 'Inactive Device',
+                deviceName: 'Inactive Device',
         deviceType: 'phone',
-        lastSyncTime: DateTime.now().subtract(const Duration(days: 100)),
-        registeredAt: DateTime.now().subtract(const Duration(days: 200)),
+        lastSyncTime: amplify_core.TemporalDateTime.fromString(DateTime.now()
+            .subtract(const Duration(days: 100))
+            .toIso8601String()),
+        createdAt: amplify_core.TemporalDateTime.fromString(DateTime.now()
+            .subtract(const Duration(days: 200))
+            .toIso8601String()),
         isActive: false,
       );
 
-      expect(activeDevice.isInactive, isFalse);
-      expect(inactiveDevice.isInactive, isTrue);
+      expect(service.isDeviceInactive(activeDevice), isFalse);
+      expect(service.isDeviceInactive(inactiveDevice), isTrue);
     });
 
     test('device copyWith creates new instance with updated fields', () {
       final original = Device(
-        id: 'device1',
-        userId: 'user1',
-        deviceName: 'Original Device',
+                deviceName: 'Original Device',
         deviceType: 'phone',
-        lastSyncTime: DateTime.now(),
-        registeredAt: DateTime.now(),
+        lastSyncTime: amplify_core.TemporalDateTime.now(),
+        createdAt: amplify_core.TemporalDateTime.now(),
         isActive: true,
       );
 
@@ -274,39 +274,27 @@ void main() {
       );
 
       expect(updated.id, equals(original.id));
-      expect(updated.userId, equals(original.userId));
       expect(updated.deviceName, equals('Updated Device'));
       expect(updated.isActive, isFalse);
     });
 
-    test('device toMap and fromMap are inverses', () {
+    test('device toMap works correctly', () {
       final original = Device(
-        id: 'device1',
-        userId: 'user1',
-        deviceName: 'Test Device',
+                deviceName: 'Test Device',
         deviceType: 'tablet',
-        lastSyncTime: DateTime.now(),
-        registeredAt: DateTime.now(),
+        lastSyncTime: amplify_core.TemporalDateTime.now(),
+        createdAt: amplify_core.TemporalDateTime.now(),
         isActive: true,
       );
 
       final map = original.toMap();
-      final restored = Device.fromMap(map);
 
-      expect(restored.id, equals(original.id));
-      expect(restored.userId, equals(original.userId));
-      expect(restored.deviceName, equals(original.deviceName));
-      expect(restored.deviceType, equals(original.deviceType));
-      expect(restored.isActive, equals(original.isActive));
-      // Compare timestamps with tolerance for serialization
-      expect(
-        restored.lastSyncTime.difference(original.lastSyncTime).inSeconds,
-        equals(0),
-      );
-      expect(
-        restored.registeredAt.difference(original.registeredAt).inSeconds,
-        equals(0),
-      );
+      expect(map['id'], equals(original.id));
+      expect(map['deviceName'], equals(original.deviceName));
+      expect(map['deviceType'], equals(original.deviceType));
+      expect(map['isActive'], equals(original.isActive));
+      expect(map['lastSyncTime'], equals(original.lastSyncTime));
+      expect(map['createdAt'], equals(original.createdAt));
     });
   });
 }

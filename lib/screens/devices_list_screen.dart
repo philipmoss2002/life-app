@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/device.dart';
+import '../models/Device.dart';
 import '../services/device_management_service.dart';
 
 /// Screen displaying all connected devices
@@ -208,7 +208,7 @@ class _DevicesListScreenState extends State<DevicesListScreen> {
 
   Widget _buildDeviceCard(Device device) {
     final isCurrentDevice = device.id == _currentDeviceId;
-    final isInactive = device.isInactive;
+    final isInactive = _deviceService.isDeviceInactive(device);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -274,7 +274,7 @@ class _DevicesListScreenState extends State<DevicesListScreen> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  'Last sync: ${_formatLastSyncTime(device.lastSyncTime)}',
+                  'Last sync: ${_formatLastSyncTime(device.lastSyncTime.getDateTimeInUtc())}',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 13,
@@ -292,7 +292,7 @@ class _DevicesListScreenState extends State<DevicesListScreen> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  'Added: ${_formatDate(device.registeredAt)}',
+                  'Added: ${_formatDate(_deviceService.getDeviceRegistrationDate(device).getDateTimeInUtc())}',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 13,

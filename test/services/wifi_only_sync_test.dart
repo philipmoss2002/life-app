@@ -1,8 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faker/faker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'package:household_docs_app/services/cloud_sync_service.dart';
-import 'package:household_docs_app/models/document.dart';
+import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/models/sync_state.dart';
 import '../test_helpers.dart';
 
@@ -16,6 +17,7 @@ import '../test_helpers.dart';
 /// setting and prevents sync operations when on cellular data.
 void main() {
   setUpAll(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
     setupTestDatabase();
   });
 
@@ -30,7 +32,7 @@ void main() {
     });
 
     tearDown(() async {
-      await syncService.dispose();
+      syncService.dispose();
     });
 
     /// Property 12: Wi-Fi Only Sync Compliance
@@ -59,14 +61,17 @@ void main() {
       await prefs.setBool('sync_wifi_only', true);
 
       // Create test document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: faker.randomGenerator
             .element(['Insurance', 'Warranty', 'Contract']),
         filePaths: [],
-        syncState: SyncState.notSynced,
+        syncState: SyncState.notSynced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
       // Queue document for sync
@@ -113,13 +118,16 @@ void main() {
       await prefs.setBool('sync_paused', true);
 
       // Create test document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        syncState: SyncState.notSynced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
       // Queue document for sync
@@ -142,14 +150,17 @@ void main() {
       // Generate multiple random documents
       final documents = List.generate(
         10,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: faker.lorem.sentence(),
           category: faker.randomGenerator
               .element(['Insurance', 'Warranty', 'Contract']),
           filePaths: [],
-          syncState: SyncState.notSynced,
+          syncState: SyncState.notSynced.toJson(),
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
         ),
       );
 
@@ -172,32 +183,40 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('sync_wifi_only', true);
 
-      final uploadDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final uploadDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Upload Test',
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        syncState: SyncState.notSynced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
-      final updateDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final updateDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Update Test',
         category: 'Warranty',
         filePaths: [],
         version: 2,
-        syncState: SyncState.pending,
+        syncState: SyncState.pending.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
       );
 
-      final deleteDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final deleteDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: 'Delete Test',
         category: 'Contract',
         filePaths: [],
-        syncState: SyncState.synced,
+        syncState: SyncState.synced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
       // Queue different operation types
@@ -249,7 +268,7 @@ void main() {
     });
 
     tearDown() async {
-      await syncService.dispose();
+      syncService.dispose();
     }
 
     test('Wi-Fi only setting defaults to false', () async {
@@ -315,13 +334,16 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('sync_paused', true);
 
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Insurance',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        syncState: SyncState.notSynced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
       // Queue document while sync is paused
@@ -363,7 +385,7 @@ void main() {
     });
 
     tearDown() async {
-      await syncService.dispose();
+      syncService.dispose();
     }
 
     /// Integration Test: Wi-Fi only mode with connectivity changes
@@ -385,13 +407,16 @@ void main() {
       // Queue multiple documents
       final documents = List.generate(
         5,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: 'Document $index',
           category: 'Insurance',
           filePaths: [],
-          syncState: SyncState.notSynced,
+          syncState: SyncState.notSynced.toJson(),
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
         ),
       );
 
@@ -426,13 +451,16 @@ void main() {
       await prefs.setBool('sync_paused', false);
 
       // Queue document
-      final testDoc = Document(
-        id: faker.randomGenerator.integer(10000),
-        userId: faker.guid.guid(),
+      final testDoc = Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                userId: faker.guid.guid(),
         title: faker.lorem.sentence(),
         category: 'Warranty',
         filePaths: [],
-        syncState: SyncState.notSynced,
+        syncState: SyncState.notSynced.toJson(),
+        createdAt: amplify_core.TemporalDateTime.now(),
+        lastModified: amplify_core.TemporalDateTime.now(),
+        version: 1,
       );
 
       await syncService.queueDocumentSync(testDoc, SyncOperationType.upload);
@@ -474,13 +502,16 @@ void main() {
       // Queue documents
       final documents = List.generate(
         10,
-        (index) => Document(
-          id: faker.randomGenerator.integer(10000),
-          userId: faker.guid.guid(),
+        (index) => Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
+
+                    userId: faker.guid.guid(),
           title: 'Document $index',
           category: 'Contract',
           filePaths: [],
-          syncState: SyncState.notSynced,
+          syncState: SyncState.notSynced.toJson(),
+          createdAt: amplify_core.TemporalDateTime.now(),
+          lastModified: amplify_core.TemporalDateTime.now(),
+          version: 1,
         ),
       );
 

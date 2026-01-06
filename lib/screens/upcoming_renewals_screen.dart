@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/document.dart';
+import 'package:provider/provider.dart';
+import '../models/Document.dart';
 import '../services/database_service.dart';
+import '../providers/auth_provider.dart';
 import 'document_detail_screen.dart';
 
 class UpcomingRenewalsScreen extends StatefulWidget {
@@ -22,14 +24,29 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
 
   Future<void> _loadUpcomingRenewals() async {
     setState(() => isLoading = true);
-    final allDocs = await DatabaseService.instance.getAllDocuments();
+
+    // Get current user from auth provider
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUser;
+
+    if (currentUser == null) {
+      setState(() {
+        upcomingRenewals = [];
+        isLoading = false;
+      });
+      return;
+    }
+
+    final allDocs =
+        await DatabaseService.instance.getUserDocuments(currentUser.id);
     final now = DateTime.now();
     final thirtyDaysFromNow = now.add(const Duration(days: 30));
 
     final upcoming = allDocs.where((doc) {
       if (doc.renewalDate == null) return false;
-      return doc.renewalDate!.isAfter(now) &&
-          doc.renewalDate!.isBefore(thirtyDaysFromNow);
+      final renewalDateTime = doc.renewalDate!.getDateTimeInUtc();
+      return renewalDateTime.isAfter(now) &&
+          renewalDateTime.isBefore(thirtyDaysFromNow);
     }).toList();
 
     upcoming.sort((a, b) => a.renewalDate!.compareTo(b.renewalDate!));
@@ -82,8 +99,10 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
       itemCount: upcomingRenewals.length,
       itemBuilder: (context, index) {
         final doc = upcomingRenewals[index];
-        final daysUntilRenewal =
-            doc.renewalDate!.difference(DateTime.now()).inDays;
+        final daysUntilRenewal = doc.renewalDate!
+            .getDateTimeInUtc()
+            .difference(DateTime.now())
+            .inDays;
         final isUrgent = daysUntilRenewal <= 7;
 
         return Card(
@@ -121,7 +140,7 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '${_getDatePrefix(doc.category)} Due: ${_formatDate(doc.renewalDate!)}',
+                      '${_getDatePrefix(doc.category)} Due: ${_formatDate(doc.renewalDate!.getDateTimeInUtc())}',
                       style: TextStyle(
                         color: isUrgent ? Colors.red : Colors.orange,
                         fontWeight: FontWeight.w500,

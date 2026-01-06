@@ -1,25 +1,25 @@
 {
   "dev": {
     "awscloudformation": {
-      "AuthRoleName": "amplify-householddocsapp-dev-940d5-authRole",
-      "UnauthRoleArn": "arn:aws:iam::851725440788:role/amplify-householddocsapp-dev-940d5-unauthRole",
-      "AuthRoleArn": "arn:aws:iam::851725440788:role/amplify-householddocsapp-dev-940d5-authRole",
+      "AuthRoleName": "amplify-householddocsapp-dev-3e624-authRole",
+      "UnauthRoleArn": "arn:aws:iam::851725440788:role/amplify-householddocsapp-dev-3e624-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::851725440788:role/amplify-householddocsapp-dev-3e624-authRole",
       "Region": "eu-west-2",
-      "DeploymentBucketName": "amplify-householddocsapp-dev-940d5-deployment",
-      "UnauthRoleName": "amplify-householddocsapp-dev-940d5-unauthRole",
-      "StackName": "amplify-householddocsapp-dev-940d5",
-      "StackId": "arn:aws:cloudformation:eu-west-2:851725440788:stack/amplify-householddocsapp-dev-940d5/145b9da0-d215-11f0-bce2-060597845099",
-      "AmplifyAppId": "d3hqwz867plxkq"
+      "DeploymentBucketName": "amplify-householddocsapp-dev-3e624-deployment",
+      "UnauthRoleName": "amplify-householddocsapp-dev-3e624-unauthRole",
+      "StackName": "amplify-householddocsapp-dev-3e624",
+      "StackId": "arn:aws:cloudformation:eu-west-2:851725440788:stack/amplify-householddocsapp-dev-3e624/e13725c0-e03d-11f0-bcb5-06a37c0306c1",
+      "AmplifyAppId": "d2x0e2spf2kss6"
     },
     "categories": {
       "auth": {
-        "householddocsapp1e3bd268": {}
+        "householddocsappac35c99f": {}
+      },
+      "storage": {
+        "s347b21250": {}
       },
       "api": {
         "householddocsapp": {}
-      },
-      "storage": {
-        "fileAttachments": {}
       }
     }
   }
