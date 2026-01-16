@@ -65,6 +65,8 @@ Future<void> testAuthorization() async {
       },
       decodePath: 'createDocument',
       modelType: Document.classType,
+      authorizationMode:
+          APIAuthorizationType.userPools, // Use Cognito User Pools
     );
 
     final response = await Amplify.API.mutate(request: request).response;
@@ -104,6 +106,8 @@ Future<void> testAuthorization() async {
       document: listQuery,
       decodePath: 'listDocuments',
       modelType: const PaginatedModelType(Document.classType),
+      authorizationMode:
+          APIAuthorizationType.userPools, // Use Cognito User Pools
     );
 
     final listResponse = await Amplify.API.query(request: listRequest).response;

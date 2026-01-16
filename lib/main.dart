@@ -6,6 +6,7 @@ import 'screens/home_screen.dart';
 import 'services/database_service.dart';
 import 'services/notification_service.dart';
 import 'services/subscription_service.dart';
+import 'services/data_cleanup_service.dart';
 import 'providers/auth_provider.dart';
 import 'services/amplify_service.dart';
 
@@ -29,6 +30,14 @@ void main() async {
     debugPrint('Notifications initialized successfully');
   } catch (e) {
     debugPrint('Failed to initialize notifications: $e');
+  }
+
+  // Initialize data cleanup service
+  try {
+    await DataCleanupService().initialize();
+    debugPrint('Data cleanup service initialized successfully');
+  } catch (e) {
+    debugPrint('Failed to initialize data cleanup service: $e');
   }
 
   // Initialize subscription service

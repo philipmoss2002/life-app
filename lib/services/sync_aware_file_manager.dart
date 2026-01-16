@@ -2,12 +2,13 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
 import 'database_service.dart';
-import 'simple_file_sync_manager.dart';
+import 'persistent_file_service.dart';
 import '../models/FileAttachment.dart';
 import 'log_service.dart' as app_log;
 import 'sync_identifier_service.dart';
 
-/// File manager that uses sync identifiers for all operations
+/// File manager that uses sync identifiers and User Pool sub-based paths for all operations
+/// Updated to use PersistentFileService for consistent file access across app reinstalls
 class SyncAwareFileManager {
   static final SyncAwareFileManager _instance =
       SyncAwareFileManager._internal();
@@ -15,7 +16,7 @@ class SyncAwareFileManager {
   SyncAwareFileManager._internal();
 
   final DatabaseService _databaseService = DatabaseService.instance;
-  final SimpleFileSyncManager _simpleFileSyncManager = SimpleFileSyncManager();
+  final PersistentFileService _persistentFileService = PersistentFileService();
 
   final app_log.LogService _logService = app_log.LogService();
 
@@ -28,6 +29,7 @@ class SyncAwareFileManager {
       _logService.log(message, level: app_log.LogLevel.warning);
 
   /// Upload a file and associate it with a document using sync identifier
+  /// Uses User Pool sub-based paths for consistent file access via PersistentFileService
   Future<FileAttachment> uploadFileForDocument(String filePath, String syncId,
       {String? label}) async {
     _logInfo('📤 Uploading file for document with sync ID: $syncId');
@@ -39,14 +41,14 @@ class SyncAwareFileManager {
         throw Exception('Document with sync ID $syncId not found');
       }
 
-      // Upload file to S3 using sync identifier
-      final s3Key = await _simpleFileSyncManager.uploadFile(filePath, syncId);
-      _logInfo('✅ File uploaded to S3: $s3Key');
+      // Upload file to S3 using PersistentFileService for User Pool sub-based paths
+      final fileName = path.basename(filePath);
+      final s3Key = await _persistentFileService.uploadFile(filePath, syncId);
+      _logInfo('✅ File uploaded to S3 using User Pool sub-based path: $s3Key');
 
       // Get file information
       final file = File(filePath);
       final fileSize = await file.length();
-      final fileName = path.basename(filePath);
       final contentType = _getContentType(fileName);
 
       // Generate unique syncId for this FileAttachment (NOT the document's syncId)
@@ -84,6 +86,7 @@ class SyncAwareFileManager {
   }
 
   /// Upload multiple files for a document using sync identifier
+  /// Uses User Pool sub-based paths via PersistentFileService for consistent file access
   Future<List<FileAttachment>> uploadFilesForDocument(
       List<String> filePaths, String syncId,
       {Map<String, String>? fileLabels}) async {
@@ -98,49 +101,51 @@ class SyncAwareFileManager {
         throw Exception('Document with sync ID $syncId not found');
       }
 
-      // Upload files in parallel
-      final s3Keys =
-          await _simpleFileSyncManager.uploadFilesParallel(filePaths, syncId);
-
-      // Create file attachment records
+      // Upload files using PersistentFileService for User Pool sub-based paths
       for (final filePath in filePaths) {
-        final s3Key = s3Keys[filePath];
-        if (s3Key == null) {
-          _logWarning('⚠️ No S3 key returned for file: $filePath');
-          continue;
+        try {
+          final fileName = path.basename(filePath);
+          final s3Key =
+              await _persistentFileService.uploadFile(filePath, syncId);
+          _logInfo(
+              '✅ File uploaded to S3 using User Pool sub-based path: $s3Key');
+
+          final file = File(filePath);
+          final fileSize = await file.length();
+          final label = fileLabels?[filePath];
+          final contentType = _getContentType(fileName);
+
+          // Generate unique syncId for this FileAttachment (NOT the document's syncId)
+          final fileAttachmentSyncId =
+              SyncIdentifierService.generateValidated();
+
+          final attachment = FileAttachment(
+            userId: document.userId, // Get userId from the document
+            syncId:
+                fileAttachmentSyncId, // Unique syncId for this FileAttachment
+            filePath: filePath,
+            fileName: fileName,
+            label: label,
+            fileSize: fileSize,
+            s3Key: s3Key,
+            addedAt: amplify_core.TemporalDateTime.now(),
+            syncState: 'synced',
+            contentType: contentType,
+          );
+
+          // Save to database with the generated FileAttachment syncId
+          await _databaseService.addFileToDocumentBySyncId(
+            syncId, // Document syncId
+            filePath,
+            label,
+            s3Key: s3Key,
+            fileAttachmentSyncId: fileAttachmentSyncId, // FileAttachment syncId
+          );
+          attachments.add(attachment);
+        } catch (e) {
+          _logWarning('⚠️ Failed to upload file $filePath: $e');
+          // Continue with other files
         }
-
-        final file = File(filePath);
-        final fileSize = await file.length();
-        final fileName = path.basename(filePath);
-        final label = fileLabels?[filePath];
-        final contentType = _getContentType(fileName);
-
-        // Generate unique syncId for this FileAttachment (NOT the document's syncId)
-        final fileAttachmentSyncId = SyncIdentifierService.generateValidated();
-
-        final attachment = FileAttachment(
-          userId: document.userId, // Get userId from the document
-          syncId: fileAttachmentSyncId, // Unique syncId for this FileAttachment
-          filePath: filePath,
-          fileName: fileName,
-          label: label,
-          fileSize: fileSize,
-          s3Key: s3Key,
-          addedAt: amplify_core.TemporalDateTime.now(),
-          syncState: 'synced',
-          contentType: contentType,
-        );
-
-        // Save to database with the generated FileAttachment syncId
-        await _databaseService.addFileToDocumentBySyncId(
-          syncId, // Document syncId
-          filePath,
-          label,
-          s3Key: s3Key,
-          fileAttachmentSyncId: fileAttachmentSyncId, // FileAttachment syncId
-        );
-        attachments.add(attachment);
       }
 
       _logInfo('✅ Uploaded ${attachments.length} files for sync ID: $syncId');
@@ -151,14 +156,17 @@ class SyncAwareFileManager {
     }
   }
 
-  /// Download a file using sync identifier
+  /// Download a file using sync identifier and User Pool sub-based paths
+  /// Uses PersistentFileService for consistent file access across app reinstalls
   Future<String> downloadFile(String s3Key, String syncId) async {
     _logInfo('📥 Downloading file: $s3Key for sync ID: $syncId');
 
     try {
+      // Use PersistentFileService for User Pool sub-based file download
       final localPath =
-          await _simpleFileSyncManager.downloadFile(s3Key, syncId);
-      _logInfo('✅ File downloaded to: $localPath');
+          await _persistentFileService.downloadFile(s3Key, syncId);
+      _logInfo(
+          '✅ File downloaded using User Pool sub-based access to: $localPath');
       return localPath;
     } catch (e) {
       _logError('❌ Failed to download file $s3Key: $e');
@@ -183,13 +191,16 @@ class SyncAwareFileManager {
     }
   }
 
-  /// Delete a file attachment using sync identifier
+  /// Delete a file attachment using sync identifier and User Pool sub-based paths
+  /// Uses PersistentFileService for consistent file deletion
   Future<void> deleteFileAttachment(String s3Key, String syncId) async {
     _logInfo('🗑️ Deleting file attachment: $s3Key for sync ID: $syncId');
 
     try {
-      // Delete from S3
-      await _simpleFileSyncManager.deleteFile(s3Key);
+      // Delete from S3 using PersistentFileService for User Pool sub-based access
+      await _persistentFileService.deleteFile(s3Key);
+      _logInfo(
+          '✅ File deleted from S3 using User Pool sub-based access: $s3Key');
 
       // Remove from database
       final db = await _databaseService.database;
@@ -232,49 +243,32 @@ class SyncAwareFileManager {
     }
   }
 
-  /// Migrate file attachments from document ID to sync ID based paths
+  /// Migrate file attachments to User Pool sub-based paths
+  /// Uses PersistentFileService for consistent file migration
   Future<void> migrateFileAttachmentPaths(String syncId) async {
-    _logInfo('🔄 Migrating file attachment paths for sync ID: $syncId');
+    _logInfo(
+        '🔄 Migrating file attachments to User Pool sub-based paths for sync ID: $syncId');
 
     try {
-      final attachments = await getFileAttachmentsForDocument(syncId);
-
-      for (final attachment in attachments) {
-        if (attachment.s3Key.contains('/$syncId/')) {
-          // Already using sync ID format
-          continue;
-        }
-
-        // Check if using old document ID format
-        final document = await _databaseService.getDocumentBySyncId(syncId);
-        if (document != null &&
-            attachment.s3Key.contains('/documents/${document.syncId}/')) {
-          // Generate new S3 key with sync ID
-          final fileName = path.basename(attachment.s3Key);
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final newS3Key = 'documents/user/$syncId/$timestamp-$fileName';
-
-          _logInfo('🔄 Migrating S3 path: ${attachment.s3Key} -> $newS3Key');
-
-          // Update database record
-          final db = await _databaseService.database;
-          await db.update(
-            'file_attachments',
-            {'s3Key': newS3Key},
-            where: 'id = ?',
-            whereArgs: [attachment.syncId],
-          );
-
-          // Note: In production, you would also copy the file in S3
-          _logInfo('✅ Updated S3 key for attachment: ${attachment.syncId}');
-        }
+      // Check if user is authenticated for migration
+      if (!await _persistentFileService.isUserAuthenticated()) {
+        throw Exception('User not authenticated - cannot perform migration');
       }
 
-      _logInfo(
-          '✅ File attachment path migration completed for sync ID: $syncId');
+      // Get all file attachments for this document
+      final attachments = await getFileAttachmentsForDocument(syncId);
+
+      if (attachments.isEmpty) {
+        _logInfo('✅ No file attachments to migrate for sync ID: $syncId');
+        return;
+      }
+
+      // Use PersistentFileService migration capabilities
+      await _persistentFileService.migrateUserFiles();
+
+      _logInfo('✅ File attachment migration completed for sync ID: $syncId');
     } catch (e) {
-      _logError(
-          '❌ Failed to migrate file attachment paths for sync ID $syncId: $e');
+      _logError('❌ Failed to migrate file attachments for sync ID $syncId: $e');
       rethrow;
     }
   }

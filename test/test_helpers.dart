@@ -8,6 +8,7 @@ import 'package:household_docs_app/providers/auth_provider.dart';
 import 'package:household_docs_app/models/Document.dart';
 import 'package:household_docs_app/models/FileAttachment.dart';
 import 'package:household_docs_app/models/sync_state.dart';
+import 'package:household_docs_app/utils/sync_identifier_generator.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
 
 /// Initialize the database factory for testing
@@ -44,7 +45,7 @@ class TestHelpers {
   static Random createRandom() => _random;
 
   /// Create a random document for testing
-  static Document createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"), {,
+  static Document createRandomDocument({
     String? id,
     String? userId,
     String? title,
@@ -57,9 +58,9 @@ class TestHelpers {
     final lastModified = TemporalDateTime(
         DateTime.now().subtract(Duration(hours: _random.nextInt(24))));
 
-    return Document(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
-
-            userId: userId ?? 'test_user_${_random.nextInt(1000)}',
+    return Document(
+      syncId: SyncIdentifierGenerator.generate(),
+      userId: userId ?? 'test_user_${_random.nextInt(1000)}',
       title: title ?? 'Test Document ${_random.nextInt(1000)}',
       category: category ?? 'Test Category ${_random.nextInt(100)}',
       filePaths: filePaths ?? ['test_file_${_random.nextInt(100)}.pdf'],
@@ -88,9 +89,8 @@ class TestHelpers {
   static List<Document> createRandomDocuments(int count, {String? userId}) {
     return List.generate(
         count,
-        (index) => createRandomDocument(syncId: SyncIdentifierService.generate(, userId: "test-user", title: "Test Document", category: "Test", filePaths: ["test.pdf"], createdAt: TemporalDateTime.now(), lastModified: TemporalDateTime.now(), version: 1, syncState: "pending"),
-
-                            userId: userId,
+        (index) => createRandomDocument(
+              userId: userId,
             ));
   }
 
@@ -106,7 +106,9 @@ class TestHelpers {
     String? syncState,
   }) {
     return FileAttachment(
-            filePath: filePath ?? '/test/path/file_${_random.nextInt(100)}.pdf',
+      syncId: SyncIdentifierGenerator.generate(),
+      userId: 'test_user_${_random.nextInt(1000)}',
+      filePath: filePath ?? '/test/path/file_${_random.nextInt(100)}.pdf',
       fileName: fileName ?? 'test_file_${_random.nextInt(100)}.pdf',
       label: label ??
           (_random.nextBool() ? 'Test Label ${_random.nextInt(100)}' : null),

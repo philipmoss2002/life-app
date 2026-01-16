@@ -7,6 +7,7 @@ import '../services/offline_sync_queue_service.dart';
 import '../services/storage_manager.dart';
 import '../services/performance_monitor.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/persistent_file_service.dart';
 import '../models/sync_state.dart';
 
 /// Provider to manage authentication state across the app
@@ -50,6 +51,9 @@ class AuthProvider extends ChangeNotifier {
         // Migrate any documents with placeholder user IDs to this user
         await _migrateDocumentsToCurrentUser();
 
+        // Check and perform file migration if needed (User Pool sub-based paths)
+        await _checkAndPerformFileMigration();
+
         // Initialize cloud sync if user is eligible
         await _initializeCloudSyncIfEligible();
       } else {
@@ -88,6 +92,9 @@ class AuthProvider extends ChangeNotifier {
 
       // Migrate any documents with placeholder user IDs to this user
       await _migrateDocumentsToCurrentUser();
+
+      // Check and perform file migration if needed (User Pool sub-based paths)
+      await _checkAndPerformFileMigration();
 
       // Initialize and start cloud sync if user has active subscription
       await _initializeCloudSyncIfEligible();
@@ -353,5 +360,59 @@ class AuthProvider extends ChangeNotifier {
       newPassword: newPassword,
       confirmationCode: confirmationCode,
     );
+  }
+
+  /// Check and perform file migration from legacy username-based paths to User Pool sub-based paths
+  /// This is called automatically during login to ensure seamless migration for existing users
+  Future<void> _checkAndPerformFileMigration() async {
+    try {
+      if (_currentUser == null) {
+        debugPrint('No current user - skipping file migration check');
+        return;
+      }
+
+      debugPrint(
+          'Checking if file migration is needed for user: ${_currentUser!.id}');
+
+      final persistentFileService = PersistentFileService();
+
+      // Lightweight check to see if migration is needed
+      final needsMigration = await persistentFileService.needsMigration();
+
+      if (!needsMigration) {
+        debugPrint(
+            'File migration not needed - user already using User Pool sub-based paths');
+        return;
+      }
+
+      debugPrint('File migration needed - starting automatic migration...');
+
+      // Perform migration
+      final migrationResult = await persistentFileService.migrateExistingUser();
+
+      // Log migration results
+      if (migrationResult['migrationPerformed'] == true) {
+        if (migrationResult['success'] == true) {
+          debugPrint('✅ File migration completed successfully:');
+          debugPrint('   - Total files: ${migrationResult['totalFiles']}');
+          debugPrint('   - Migrated: ${migrationResult['migratedFiles']}');
+          debugPrint('   - Failed: ${migrationResult['failedFiles']}');
+          debugPrint('   - Duration: ${migrationResult['durationSeconds']}s');
+        } else {
+          debugPrint('⚠️ File migration completed with errors:');
+          debugPrint('   - Total files: ${migrationResult['totalFiles']}');
+          debugPrint('   - Migrated: ${migrationResult['migratedFiles']}');
+          debugPrint('   - Failed: ${migrationResult['failedFiles']}');
+          debugPrint('   - Error: ${migrationResult['error']}');
+        }
+      } else {
+        debugPrint(
+            'File migration not performed: ${migrationResult['reason']}');
+      }
+    } catch (e) {
+      debugPrint('Error during file migration check: $e');
+      // Don't throw - app should continue working even if migration fails
+      // Files will still be accessible via fallback mechanism
+    }
   }
 }

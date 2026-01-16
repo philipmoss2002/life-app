@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/Document.dart';
 import '../models/FileAttachment.dart';
 import '../models/model_extensions.dart';
@@ -92,8 +94,17 @@ class DatabaseService {
   }
 
   Future<Database> _initDB(String filePath) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    // Use getApplicationSupportDirectory() to ensure app-internal storage
+    // This guarantees the database is removed on app uninstall
+    final appDir = await getApplicationSupportDirectory();
+    final dbDir = Directory(join(appDir.path, 'databases'));
+
+    // Ensure database directory exists
+    if (!await dbDir.exists()) {
+      await dbDir.create(recursive: true);
+    }
+
+    final path = join(dbDir.path, filePath);
 
     return await openDatabase(
       path,
@@ -937,6 +948,19 @@ class DatabaseService {
       'documents',
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  /// Delete document by sync identifier (preferred method for sync operations)
+  Future<int> deleteDocumentBySyncId(String syncId) async {
+    // Validate sync identifier
+    _validateSyncId(syncId, context: 'document deletion by syncId');
+
+    final db = await database;
+    return await db.delete(
+      'documents',
+      where: 'syncId = ?',
+      whereArgs: [syncId],
     );
   }
 

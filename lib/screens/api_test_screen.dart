@@ -140,6 +140,8 @@ class _ApiTestScreenState extends State<ApiTestScreen> {
 
         final request = GraphQLRequest<String>(
           document: testQuery,
+          authorizationMode:
+              APIAuthorizationType.userPools, // Use Cognito User Pools
         );
 
         _log('📤 Sending test GraphQL query...');

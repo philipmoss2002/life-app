@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
-import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
@@ -9,6 +8,8 @@ import 'retry_manager.dart';
 import 'auth_token_manager.dart';
 import 'file_validation_service.dart';
 import 'performance_monitor.dart';
+import 'persistent_file_service.dart';
+import '../utils/file_operation_error_handler.dart';
 
 /// Progress information for file uploads/downloads
 class FileProgress {
@@ -37,11 +38,10 @@ enum FileTransferState {
   failed,
 }
 
-/// Manages file synchronization with AWS S3
+/// Manages file synchronization with AWS S3 using User Pool sub-based paths
+/// Updated to use PersistentFileService for consistent file access across app reinstalls
 class FileSyncManager {
   static const int _multipartThreshold = 5 * 1024 * 1024; // 5MB
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 2);
   static const int _maxConcurrentUploads = 3; // Max parallel uploads
   static const int _compressionThreshold =
       1 * 1024 * 1024; // 1MB - compress files larger than this
@@ -57,8 +57,9 @@ class FileSyncManager {
   final AuthTokenManager _authManager = AuthTokenManager();
   final FileValidationService _validationService = FileValidationService();
   final PerformanceMonitor _performanceMonitor = PerformanceMonitor();
+  final PersistentFileService _persistentFileService = PersistentFileService();
 
-  /// Upload a file to S3
+  /// Upload a file to S3 using User Pool sub-based private access
   /// Returns the S3 key for the uploaded file
   Future<String> uploadFile(String filePath, String syncId) async {
     final operationId =
@@ -71,19 +72,6 @@ class FileSyncManager {
     // Validate file before upload
     await _validationService.validateFileForUpload(filePath);
 
-    final file = File(filePath);
-    final fileSize = await file.length();
-
-    // Check if this is a resume of an interrupted upload
-    final existingS3Key = _interruptedUploads[filePath];
-    if (existingS3Key != null) {
-      safePrint('Resuming interrupted upload for $filePath');
-      return await _resumeUpload(filePath, existingS3Key, syncId);
-    }
-
-    // Calculate original file checksum for integrity verification
-    final originalChecksum = await calculateFileChecksum(filePath);
-
     // Compress file if needed
     final uploadPath = await _compressFileIfNeeded(filePath);
     final uploadFile = File(uploadPath);
@@ -91,7 +79,9 @@ class FileSyncManager {
 
     final uploadFileSize = await uploadFile.length();
     final fileName = path.basename(filePath);
-    final s3Key = _generateS3Key(syncId, fileName);
+
+    // Use PersistentFileService to generate User Pool sub-based S3 key
+    final s3Key = await _generateS3Key(syncId, fileName);
     final fileId = s3Key;
 
     // Track this upload for potential resume
@@ -107,8 +97,7 @@ class FileSyncManager {
         await _uploadSmallFile(uploadFile, s3Key, fileId, uploadFileSize);
       }
 
-      // Verify file integrity after upload by downloading and comparing checksums
-      // TEMPORARILY DISABLED: await _verifyUploadIntegrity(s3Key, originalChecksum, syncId);
+      // File integrity verification temporarily disabled for debugging
       safePrint(
           'File integrity verification temporarily disabled for debugging');
 
@@ -199,13 +188,24 @@ class FileSyncManager {
     }
   }
 
-  /// Delete a file from S3
+  /// Delete a file from S3 using User Pool sub-based private access
   Future<void> deleteFile(String s3Key) async {
     // Validate authentication before operation
     await _authManager.validateTokenBeforeOperation();
 
     try {
-      await _deleteWithRetry(s3Key);
+      // Use PersistentFileService for User Pool sub-based deletion with error handling
+      try {
+        await _persistentFileService.deleteFile(s3Key);
+        safePrint(
+            'File deleted successfully using PersistentFileService: $s3Key');
+      } catch (e) {
+        // Fallback to direct S3 deletion for legacy compatibility
+        safePrint(
+            'PersistentFileService delete failed, trying direct S3 access: $e');
+        await _deleteWithRetry(s3Key);
+      }
+
       _retryCount.remove(s3Key);
     } catch (e) {
       safePrint('Error deleting file from S3: $e');
@@ -254,16 +254,40 @@ class FileSyncManager {
 
   // Private helper methods
 
-  String _generateS3Key(String syncId, String fileName) {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final sanitizedFileName =
-        fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    return 'documents/$syncId/$timestamp-$sanitizedFileName';
+  /// Generate S3 key using User Pool sub-based private access
+  /// Uses PersistentFileService for consistent path generation
+  Future<String> _generateS3Key(String syncId, String fileName) async {
+    try {
+      // Use PersistentFileService to generate User Pool sub-based S3 key
+      return await _persistentFileService.generateS3Path(syncId, fileName);
+    } catch (e) {
+      safePrint(
+          'PersistentFileService S3 key generation failed, falling back to legacy method: $e');
+
+      // Fallback to legacy username-based path generation for compatibility
+      final user = await Amplify.Auth.getCurrentUser();
+      final username = user.username;
+
+      if (username.isEmpty) {
+        throw Exception(
+            'No Cognito username available - user may not be properly authenticated');
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final sanitizedFileName =
+          fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      // Use username-based path structure: protected/{username}/documents/{syncId}/{filename}
+      return 'protected/$username/documents/$syncId/$timestamp-$sanitizedFileName';
+    }
   }
 
-  /// Get the full S3 path with public prefix for storage operations
-  String _getPublicS3Path(String s3Key) {
-    return 'public/$s3Key';
+  /// Get the S3 path for storage operations
+  /// Handles both User Pool sub-based (private) and legacy (protected) access levels
+  String _getS3Path(String s3Key) {
+    // No prefix needed - S3 key already contains the full path
+    // For User Pool sub-based paths: private/{userSub}/documents/{syncId}/{filename}
+    // For legacy paths: protected/{username}/documents/{syncId}/{filename}
+    return s3Key;
   }
 
   Future<String> _getLocalCachePath(String s3Key, String syncId) async {
@@ -342,7 +366,7 @@ class FileSyncManager {
 
           final uploadResult = await Amplify.Storage.uploadFile(
             localFile: AWSFile.fromPath(file.path),
-            path: StoragePath.fromString(_getPublicS3Path(s3Key)),
+            path: StoragePath.fromString(_getS3Path(s3Key)),
             onProgress: (progress) {
               _updateUploadProgress(
                 fileId,
@@ -372,7 +396,7 @@ class FileSyncManager {
           // Amplify handles multipart uploads automatically for large files
           final uploadResult = await Amplify.Storage.uploadFile(
             localFile: AWSFile.fromPath(file.path),
-            path: StoragePath.fromString(_getPublicS3Path(s3Key)),
+            path: StoragePath.fromString(_getS3Path(s3Key)),
             onProgress: (progress) {
               _updateUploadProgress(
                 fileId,
@@ -399,7 +423,7 @@ class FileSyncManager {
           _updateDownloadProgress(fileId, 0, 0, FileTransferState.inProgress);
 
           final downloadResult = await Amplify.Storage.downloadFile(
-            path: StoragePath.fromString(_getPublicS3Path(s3Key)),
+            path: StoragePath.fromString(_getS3Path(s3Key)),
             localFile: AWSFile.fromPath(localPath),
             onProgress: (progress) {
               _updateDownloadProgress(
@@ -426,7 +450,7 @@ class FileSyncManager {
       return await _retryManager.executeWithRetry(
         () async {
           await Amplify.Storage.remove(
-            path: StoragePath.fromString(_getPublicS3Path(s3Key)),
+            path: StoragePath.fromString(_getS3Path(s3Key)),
           ).result;
           safePrint('File deleted successfully: $s3Key');
         },
@@ -438,13 +462,29 @@ class FileSyncManager {
   Future<void> _handleUploadError(String filePath, String syncId, String fileId,
       int fileSize, Object error) async {
     _updateUploadProgress(fileId, fileSize, 0, FileTransferState.failed);
-    safePrint('Upload failed: $error');
+
+    // Enhanced error handling for User Pool sub-based operations
+    if (error is UserPoolSubException) {
+      safePrint('User Pool sub error during upload: $error');
+    } else if (error is FilePathGenerationException) {
+      safePrint('File path generation error during upload: $error');
+    } else {
+      safePrint('Upload failed: $error');
+    }
   }
 
   Future<void> _handleDownloadError(
       String s3Key, String syncId, String fileId, Object error) async {
     _updateDownloadProgress(fileId, 0, 0, FileTransferState.failed);
-    safePrint('Download failed: $error');
+
+    // Enhanced error handling for User Pool sub-based operations
+    if (error is UserPoolSubException) {
+      safePrint('User Pool sub error during download: $error');
+    } else if (error is FilePathGenerationException) {
+      safePrint('File path generation error during download: $error');
+    } else {
+      safePrint('Download failed: $error');
+    }
   }
 
   /// Calculate MD5 checksum of a file for integrity verification
@@ -656,79 +696,6 @@ class FileSyncManager {
     }
   }
 
-  /// Verify upload integrity by downloading and comparing checksums
-  Future<void> _verifyUploadIntegrity(
-      String s3Key, String originalChecksum, String syncId) async {
-    try {
-      // Download the uploaded file to a temporary location
-      final tempDir = await getTemporaryDirectory();
-      final tempPath = '${tempDir.path}/verify_${path.basename(s3Key)}';
-
-      await _authManager.executeWithTokenRefresh(() async {
-        await Amplify.Storage.downloadFile(
-          path: StoragePath.fromString(_getPublicS3Path(s3Key)),
-          localFile: AWSFile.fromPath(tempPath),
-        ).result;
-      });
-
-      // Use validation service for comprehensive file validation with checksum
-      await _validationService.validateDownloadedFile(tempPath,
-          expectedChecksum: originalChecksum);
-
-      // Clean up temporary file
-      final tempFile = File(tempPath);
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
-
-      safePrint('File integrity verified successfully for $s3Key');
-    } catch (e) {
-      safePrint('File integrity verification failed: $e');
-      // Don't rethrow - upload was successful, verification is additional safety
-      // In production, you might want to log this for monitoring
-    }
-  }
-
-  /// Resume an interrupted upload
-  Future<String> _resumeUpload(
-      String filePath, String s3Key, String syncId) async {
-    final file = File(filePath);
-    final fileSize = await file.length();
-    final fileId = s3Key;
-
-    // Initialize progress tracking
-    _initializeUploadProgress(fileId, fileSize);
-
-    try {
-      // For resume, we'll restart the upload since Amplify handles multipart internally
-      // In a more sophisticated implementation, you could track partial uploads
-      if (fileSize > _multipartThreshold) {
-        await _uploadLargeFile(file, s3Key, fileId, fileSize);
-      } else {
-        await _uploadSmallFile(file, s3Key, fileId, fileSize);
-      }
-
-      // Calculate checksum for verification
-      final originalChecksum = await calculateFileChecksum(filePath);
-      // TEMPORARILY DISABLED: await _verifyUploadIntegrity(s3Key, originalChecksum, syncId);
-      safePrint(
-          'File integrity verification temporarily disabled for debugging');
-
-      _updateUploadProgress(
-          fileId, fileSize, fileSize, FileTransferState.completed);
-      _retryCount.remove(fileId);
-      _interruptedUploads.remove(filePath); // Remove from interrupted uploads
-
-      safePrint('Successfully resumed upload for $filePath');
-      return s3Key;
-    } catch (e) {
-      await _handleUploadError(filePath, syncId, fileId, fileSize, e);
-      rethrow;
-    } finally {
-      await _cleanupUploadProgress(fileId);
-    }
-  }
-
   /// Get list of interrupted uploads that can be resumed
   Map<String, String> getInterruptedUploads() {
     return Map.from(_interruptedUploads);
@@ -765,5 +732,39 @@ class FileSyncManager {
     _downloadProgressControllers.clear();
     _retryCount.clear();
     _interruptedUploads.clear();
+  }
+
+  /// Get User Pool sub for debugging purposes
+  /// Uses PersistentFileService for consistent user identification
+  Future<String> getUserPoolSub() async {
+    try {
+      return await _persistentFileService.getUserPoolSub();
+    } catch (e) {
+      safePrint('Error getting User Pool sub: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if user is authenticated
+  /// Uses PersistentFileService for consistent authentication checking
+  Future<bool> isUserAuthenticated() async {
+    try {
+      return await _persistentFileService.isUserAuthenticated();
+    } catch (e) {
+      safePrint('Error checking user authentication: $e');
+      return false;
+    }
+  }
+
+  /// Check if a file exists using User Pool sub-based paths with fallback
+  /// Uses PersistentFileService for consistent file checking
+  Future<bool> fileExists(String syncId, String fileName) async {
+    try {
+      return await _persistentFileService.fileExistsWithFallback(
+          syncId, fileName);
+    } catch (e) {
+      safePrint('Error checking file existence: $e');
+      return false;
+    }
   }
 }

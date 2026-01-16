@@ -1,4 +1,5 @@
 import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import '../models/FileAttachment.dart';
 import '../models/sync_state.dart';
 import 'database_service.dart';
@@ -43,6 +44,71 @@ class FileAttachmentSyncManager {
         throw Exception('User not authenticated');
       }
       _logInfo('✅ Authentication validated successfully');
+
+      // Get authenticated user details and compare with FileAttachment userId
+      _logInfo(
+          '🔍 Fetching authenticated user details for standalone upload...');
+      try {
+        final currentUser = await Amplify.Auth.getCurrentUser();
+        final userAttributes = await Amplify.Auth.fetchUserAttributes();
+
+        // Extract sub claim (user ID) from attributes
+        String? authenticatedUserSub;
+        String? authenticatedUserEmail;
+        for (final attribute in userAttributes) {
+          if (attribute.userAttributeKey == AuthUserAttributeKey.sub) {
+            authenticatedUserSub = attribute.value;
+          } else if (attribute.userAttributeKey == AuthUserAttributeKey.email) {
+            authenticatedUserEmail = attribute.value;
+          }
+        }
+
+        _logInfo('👤 Standalone Upload Authentication Details:');
+        _logInfo('   🆔 Current User ID: ${currentUser.userId}');
+        _logInfo(
+            '   🔑 User Sub Claim: ${authenticatedUserSub ?? 'NOT_FOUND'}');
+        _logInfo('   📧 User Email: ${authenticatedUserEmail ?? 'NOT_FOUND'}');
+        _logInfo('   📄 FileAttachment userId: ${attachment.userId}');
+
+        // Check if FileAttachment userId matches authenticated user's sub claim
+        if (authenticatedUserSub != null &&
+            attachment.userId == authenticatedUserSub) {
+          _logInfo(
+              '✅ FileAttachment userId matches authenticated user sub claim');
+        } else {
+          _logError(
+              '❌ MISMATCH: FileAttachment userId does not match authenticated user sub claim');
+          _logError('   Expected (sub claim): $authenticatedUserSub');
+          _logError('   Actual (FileAttachment): ${attachment.userId}');
+          _logError('   This may cause authorization failures in DynamoDB');
+        }
+
+        // Also check session details
+        if (authSession is CognitoAuthSession) {
+          try {
+            final tokens = authSession.userPoolTokensResult.value;
+            final idToken = tokens.idToken;
+            _logInfo('🎫 Standalone Upload Token Details:');
+            _logInfo('   🔑 ID Token present: ${idToken.raw.isNotEmpty}');
+            _logInfo('   👤 Token userId: ${idToken.userId}');
+
+            // Verify token userId matches FileAttachment userId
+            if (idToken.userId == attachment.userId) {
+              _logInfo('✅ ID Token userId matches FileAttachment userId');
+            } else {
+              _logError(
+                  '❌ MISMATCH: ID Token userId does not match FileAttachment userId');
+              _logError('   Token userId: ${idToken.userId}');
+              _logError('   FileAttachment userId: ${attachment.userId}');
+            }
+          } catch (tokenError) {
+            _logError('❌ Failed to get user pool tokens: $tokenError');
+          }
+        }
+      } catch (e) {
+        _logError('❌ Error fetching user details for standalone upload: $e');
+        // Don't fail the upload, just log the error
+      }
 
       // Validate attachment has required fields
       if (attachment.syncId.isEmpty) {
@@ -103,6 +169,23 @@ class FileAttachmentSyncManager {
         modelType: FileAttachment.classType,
         authorizationMode: APIAuthorizationType.userPools,
       );
+
+      // Log the exact GraphQL variables being sent to DynamoDB for standalone upload
+      _logInfo('📋 Standalone Upload GraphQL Mutation Variables:');
+      _logInfo('   🔗 syncId: ${attachmentToUpload.syncId}');
+      _logInfo('   👤 userId: ${attachmentToUpload.userId}');
+      _logInfo('   📁 fileName: ${attachmentToUpload.fileName}');
+      _logInfo('   🏷️ label: ${attachmentToUpload.label ?? 'null'}');
+      _logInfo('   📊 fileSize: ${attachmentToUpload.fileSize}');
+      _logInfo('   🔑 s3Key: ${attachmentToUpload.s3Key}');
+      _logInfo('   📂 filePath: ${attachmentToUpload.filePath}');
+      _logInfo('   📅 addedAt: ${attachmentToUpload.addedAt.format()}');
+      _logInfo(
+          '   🗂️ contentType: ${attachmentToUpload.contentType ?? 'null'}');
+      _logInfo('   🔐 checksum: ${attachmentToUpload.checksum ?? 'null'}');
+      _logInfo('   📊 syncState: ${attachmentToUpload.syncState}');
+      _logInfo('   🔒 authorizationMode: ${APIAuthorizationType.userPools}');
+      _logInfo('   ⚠️ Note: No documentSyncId in standalone upload');
 
       final response = await Amplify.API.mutate(request: request).response;
 
@@ -468,6 +551,70 @@ class FileAttachmentSyncManager {
       }
       _logInfo('✅ Authentication validated successfully');
 
+      // Get authenticated user details and compare with FileAttachment userId
+      _logInfo('🔍 Fetching authenticated user details...');
+      try {
+        final currentUser = await Amplify.Auth.getCurrentUser();
+        final userAttributes = await Amplify.Auth.fetchUserAttributes();
+
+        // Extract sub claim (user ID) from attributes
+        String? authenticatedUserSub;
+        String? authenticatedUserEmail;
+        for (final attribute in userAttributes) {
+          if (attribute.userAttributeKey == AuthUserAttributeKey.sub) {
+            authenticatedUserSub = attribute.value;
+          } else if (attribute.userAttributeKey == AuthUserAttributeKey.email) {
+            authenticatedUserEmail = attribute.value;
+          }
+        }
+
+        _logInfo('👤 Authentication Details:');
+        _logInfo('   🆔 Current User ID: ${currentUser.userId}');
+        _logInfo(
+            '   🔑 User Sub Claim: ${authenticatedUserSub ?? 'NOT_FOUND'}');
+        _logInfo('   📧 User Email: ${authenticatedUserEmail ?? 'NOT_FOUND'}');
+        _logInfo('   📄 FileAttachment userId: ${attachment.userId}');
+
+        // Check if FileAttachment userId matches authenticated user's sub claim
+        if (authenticatedUserSub != null &&
+            attachment.userId == authenticatedUserSub) {
+          _logInfo(
+              '✅ FileAttachment userId matches authenticated user sub claim');
+        } else {
+          _logError(
+              '❌ MISMATCH: FileAttachment userId does not match authenticated user sub claim');
+          _logError('   Expected (sub claim): $authenticatedUserSub');
+          _logError('   Actual (FileAttachment): ${attachment.userId}');
+          _logError('   This may cause authorization failures in DynamoDB');
+        }
+
+        // Also check session details
+        if (authSession is CognitoAuthSession) {
+          try {
+            final tokens = authSession.userPoolTokensResult.value;
+            final idToken = tokens.idToken;
+            _logInfo('🎫 Token Details:');
+            _logInfo('   🔑 ID Token present: ${idToken.raw.isNotEmpty}');
+            _logInfo('   👤 Token userId: ${idToken.userId}');
+
+            // Verify token userId matches FileAttachment userId
+            if (idToken.userId == attachment.userId) {
+              _logInfo('✅ ID Token userId matches FileAttachment userId');
+            } else {
+              _logError(
+                  '❌ MISMATCH: ID Token userId does not match FileAttachment userId');
+              _logError('   Token userId: ${idToken.userId}');
+              _logError('   FileAttachment userId: ${attachment.userId}');
+            }
+          } catch (tokenError) {
+            _logError('❌ Failed to get user pool tokens: $tokenError');
+          }
+        }
+      } catch (e) {
+        _logError('❌ Error fetching user details: $e');
+        // Don't fail the upload, just log the error
+      }
+
       // Validate attachment has required fields
       _logInfo('🔍 Validating FileAttachment fields...');
       if (attachment.syncId.isEmpty) {
@@ -532,6 +679,23 @@ class FileAttachmentSyncManager {
         modelType: FileAttachment.classType,
         authorizationMode: APIAuthorizationType.userPools,
       );
+
+      // Log the exact GraphQL variables being sent to DynamoDB
+      _logInfo('📋 GraphQL Mutation Variables:');
+      _logInfo('   🔗 syncId: ${attachmentToUpload.syncId}');
+      _logInfo('   📄 documentSyncId: $documentSyncId');
+      _logInfo('   👤 userId: ${attachmentToUpload.userId}');
+      _logInfo('   📁 fileName: ${attachmentToUpload.fileName}');
+      _logInfo('   🏷️ label: ${attachmentToUpload.label ?? 'null'}');
+      _logInfo('   📊 fileSize: ${attachmentToUpload.fileSize}');
+      _logInfo('   🔑 s3Key: ${attachmentToUpload.s3Key}');
+      _logInfo('   📂 filePath: ${attachmentToUpload.filePath}');
+      _logInfo('   📅 addedAt: ${attachmentToUpload.addedAt.format()}');
+      _logInfo(
+          '   🗂️ contentType: ${attachmentToUpload.contentType ?? 'null'}');
+      _logInfo('   🔐 checksum: ${attachmentToUpload.checksum ?? 'null'}');
+      _logInfo('   📊 syncState: ${attachmentToUpload.syncState}');
+      _logInfo('   🔒 authorizationMode: ${APIAuthorizationType.userPools}');
 
       _logInfo('📡 GraphQL request prepared, executing mutation...');
       final response = await Amplify.API.mutate(request: request).response;

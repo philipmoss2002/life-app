@@ -6,6 +6,7 @@ import '../services/database_service.dart';
 
 import 'package:uuid/uuid.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
+
 /// Service for tracking sync identifier usage and analytics
 /// Integrates with existing services to provide comprehensive analytics
 class SyncIdentifierAnalyticsService {
@@ -63,7 +64,13 @@ class SyncIdentifierAnalyticsService {
     String? errorMessage,
   }) async {
     try {
-      await _analyticsService.trackSyncEvent(type: type, success: success, documentId: documentId, syncId: syncId, latencyMs: latencyMs, errorMessage: errorMessage, id: uuid.v4(), eventType: "sync_event", entityType: "document", entityId: "unknown", message: "Sync event", timestamp: amplify_core.TemporalDateTime.now());
+      await _analyticsService.trackSyncEvent(
+          type: type,
+          success: success,
+          documentId: documentId,
+          syncId: syncId,
+          latencyMs: latencyMs,
+          errorMessage: errorMessage);
 
       safePrint(
           'SyncIdentifierAnalytics: Sync operation tracked - Type: $type, Success: $success, SyncId: ${syncId ?? 'none'}');

@@ -6,7 +6,10 @@ import '../test_helpers.dart';
 import 'dart:io';
 
 import '../../lib/services/sync_identifier_service.dart';
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('SyncAwareFileManager', () {
     late SyncAwareFileManager fileManager;
     late DatabaseService databaseService;

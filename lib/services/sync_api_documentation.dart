@@ -1,5 +1,8 @@
+library sync_api_documentation;
+
 import 'package:uuid/uuid.dart';
 import 'package:amplify_core/amplify_core.dart' as amplify_core;
+
 /// # Sync API Documentation
 ///
 /// This document describes the API contracts and interfaces for the cloud synchronization
@@ -285,7 +288,6 @@ import 'package:amplify_core/amplify_core.dart' as amplify_core;
 /// - **v1.1**: Enhanced error handling with sync identifier references
 /// - **v1.2**: Added sync identifier-based API methods
 /// - **v1.3**: Improved event payloads with metadata and sync identifiers
-library sync_api_documentation;
 
 // This file serves as documentation and doesn't contain executable code
 // It should be referenced by developers working with the sync API

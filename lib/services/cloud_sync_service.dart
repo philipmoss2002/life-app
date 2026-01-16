@@ -117,7 +117,7 @@ class CloudSyncService {
   final SyncErrorHandler _errorHandler = SyncErrorHandler();
   final BackwardCompatibilityService _backwardCompatibilityService =
       BackwardCompatibilityService();
-  late final SyncStateManager _syncStateManager;
+  late SyncStateManager _syncStateManager;
 
   // State
   bool _isInitialized = false;
@@ -1522,6 +1522,11 @@ class CloudSyncService {
   /// [metadata] - Optional metadata about the state change
   Future<void> _updateSyncStateBySyncId(String syncId, SyncState state,
       {Map<String, dynamic>? metadata}) async {
+    if (!_isInitialized) {
+      _logWarning('CloudSyncService not initialized, cannot update sync state');
+      return;
+    }
+
     try {
       await _syncStateManager.updateSyncState(syncId, state,
           metadata: metadata);
@@ -1583,22 +1588,38 @@ class CloudSyncService {
 
   /// Query documents by sync state, returning their sync identifiers
   Future<List<String>> getDocumentsBySyncState(SyncState state) async {
+    if (!_isInitialized) {
+      _logWarning('CloudSyncService not initialized, returning empty list');
+      return [];
+    }
     return await _syncStateManager.getDocumentsBySyncState(state);
   }
 
   /// Get sync state for a document by sync identifier
   Future<SyncState?> getSyncStateBySyncId(String syncId) async {
+    if (!_isInitialized) {
+      _logWarning('CloudSyncService not initialized, returning null');
+      return null;
+    }
     return await _syncStateManager.getSyncState(syncId);
   }
 
   /// Get sync state history for a document by sync identifier
   List<SyncStateHistoryEntry> getSyncStateHistory(String syncId) {
+    if (!_isInitialized) {
+      _logWarning('CloudSyncService not initialized, returning empty list');
+      return [];
+    }
     return _syncStateManager.getSyncStateHistory(syncId);
   }
 
   /// Mark document for deletion using sync identifier
   Future<void> markDocumentForDeletionBySyncId(String syncId,
       {Map<String, dynamic>? metadata}) async {
+    if (!_isInitialized) {
+      _logWarning('CloudSyncService not initialized, cannot mark for deletion');
+      return;
+    }
     await _syncStateManager.markForDeletion(syncId, metadata: metadata);
   }
 
@@ -1807,17 +1828,26 @@ class CloudSyncService {
     // Clear sync queue
     _syncQueue.clear();
 
+    // Dispose sync state manager if initialized
+    if (_isInitialized) {
+      _syncStateManager.dispose();
+    }
+
     // Reset state
     _isInitialized = false;
     _isSyncing = false;
     _lastSyncTime = null;
+    _hasUploadedInCurrentSync = false;
+    _lastSyncHash = null;
 
     _logInfo('CloudSyncService: Sign out handled');
   }
 
   /// Dispose of resources and clean up
   void dispose() {
-    _syncStateManager.dispose();
+    if (_isInitialized) {
+      _syncStateManager.dispose();
+    }
     _syncEventController.close();
     _connectivitySubscription?.cancel();
     _periodicSyncTimer?.cancel();

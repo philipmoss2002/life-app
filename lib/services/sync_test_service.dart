@@ -33,6 +33,8 @@ class SyncTestService {
 
       final request = GraphQLRequest<String>(
         document: testQuery,
+        authorizationMode:
+            APIAuthorizationType.userPools, // Use Cognito User Pools
       );
 
       final response = await Amplify.API.query(request: request).response;
@@ -97,6 +99,8 @@ class SyncTestService {
       final request = GraphQLRequest<String>(
         document: createDocumentMutation,
         variables: variables,
+        authorizationMode:
+            APIAuthorizationType.userPools, // Use Cognito User Pools
       );
 
       final response = await Amplify.API.mutate(request: request).response;
@@ -151,6 +155,8 @@ class SyncTestService {
       final request = GraphQLRequest<String>(
         document: listDocumentsQuery,
         variables: variables,
+        authorizationMode:
+            APIAuthorizationType.userPools, // Use Cognito User Pools
       );
 
       final response = await Amplify.API.query(request: request).response;

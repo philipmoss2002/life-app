@@ -565,7 +565,7 @@ class OfflineSyncQueueService {
       );
 
       if (document.title.isNotEmpty) {
-        await _databaseService.deleteDocument(int.parse(document.syncId));
+        await _databaseService.deleteDocumentBySyncId(document.syncId);
       }
     } catch (e) {
       safePrint('Error removing document from local database: $e');

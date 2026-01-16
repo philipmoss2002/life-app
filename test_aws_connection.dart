@@ -162,6 +162,8 @@ class _ConnectivityTestScreenState extends State<ConnectivityTestScreen> {
 
       final request = GraphQLRequest<String>(
         document: graphQLDocument,
+        authorizationMode:
+            APIAuthorizationType.userPools, // Use Cognito User Pools
       );
 
       final response = await Amplify.API.query(request: request).response;

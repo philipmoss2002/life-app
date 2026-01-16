@@ -4,6 +4,7 @@ import '../models/Document.dart';
 import 'database_service.dart';
 import 'authentication_service.dart';
 import 'analytics_service.dart';
+import 'persistent_file_service.dart';
 
 /// Model representing storage information
 class StorageInfo {
@@ -33,7 +34,8 @@ class StorageInfo {
   }
 }
 
-/// Manages cloud storage usage and quota enforcement
+/// Manages cloud storage usage and quota enforcement using User Pool sub-based paths
+/// Updated to use PersistentFileService for consistent file access across app reinstalls
 class StorageManager {
   static final StorageManager _instance = StorageManager._internal();
   factory StorageManager() => _instance;
@@ -43,6 +45,7 @@ class StorageManager {
   final DatabaseService _databaseService = DatabaseService.instance;
   final AuthenticationService _authService = AuthenticationService();
   final AnalyticsService _analyticsService = AnalyticsService();
+  final PersistentFileService _persistentFileService = PersistentFileService();
 
   // Default quota: 5GB for premium users
   static const int _defaultQuotaBytes = 5 * 1024 * 1024 * 1024;
@@ -143,7 +146,7 @@ class StorageManager {
     return availableBytes >= bytes;
   }
 
-  /// Clean up deleted files from S3
+  /// Clean up deleted files from S3 using User Pool sub-based paths
   Future<void> cleanupDeletedFiles() async {
     try {
       final user = await _authService.getCurrentUser();
@@ -152,8 +155,8 @@ class StorageManager {
         return;
       }
 
-      // List all files in user's S3 directory
-      final s3Files = await _listUserS3Files(user.id);
+      // List all files in user's S3 directory using User Pool sub-based paths
+      final s3Files = await _listUserS3Files();
 
       // Get all documents
       final documents = await _databaseService.getAllDocuments();
@@ -162,7 +165,8 @@ class StorageManager {
       final validFilePaths = <String>{};
       for (final document in documents) {
         for (final filePath in document.filePaths) {
-          final s3Key = _generateS3Key(document.syncId.toString(), filePath);
+          // Use PersistentFileService to generate User Pool sub-based S3 key
+          final s3Key = await _generateS3Key(document.syncId, filePath);
           validFilePaths.add(s3Key);
         }
       }
@@ -172,13 +176,22 @@ class StorageManager {
       for (final s3File in s3Files) {
         if (!validFilePaths.contains(s3File)) {
           try {
-            await Amplify.Storage.remove(
-                    path: StoragePath.fromString('public/$s3File'))
-                .result;
+            // Use PersistentFileService for consistent deletion
+            await _persistentFileService.deleteFile(s3File);
             deletedCount++;
-            safePrint('Deleted orphaned file: $s3File');
+            safePrint(
+                'Deleted orphaned file using User Pool sub-based access: $s3File');
           } catch (e) {
-            safePrint('Error deleting file $s3File: $e');
+            // Fallback to direct S3 deletion for legacy compatibility
+            try {
+              await Amplify.Storage.remove(path: StoragePath.fromString(s3File))
+                  .result;
+              deletedCount++;
+              safePrint(
+                  'Deleted orphaned file using direct S3 access: $s3File');
+            } catch (directError) {
+              safePrint('Error deleting file $s3File: $directError');
+            }
           }
         }
       }
@@ -205,49 +218,96 @@ class StorageManager {
     return size;
   }
 
-  Future<int> _getS3FileSize(String documentId, String filePath) async {
-    try {
-      final s3Key = _generateS3Key(documentId, filePath);
-      final result = await Amplify.Storage.getProperties(
-        path: StoragePath.fromString('public/$s3Key'),
-      ).result;
-
-      return result.storageItem.size ?? 0;
-    } catch (e) {
-      // File might not exist in S3 yet or might have different timestamp
-      // Return estimated size instead of failing
-      safePrint('S3 file not found, using estimated size: $e');
-      return _estimateFileSize(filePath);
-    }
-  }
-
   int _estimateFileSize(String filePath) {
     // Return a conservative estimate if we can't get actual size
     // Average document file size: 500KB
     return 500 * 1024;
   }
 
-  Future<List<String>> _listUserS3Files(String userId) async {
+  /// List user's S3 files using User Pool sub-based private access
+  /// Uses PersistentFileService for consistent file listing
+  Future<List<String>> _listUserS3Files() async {
     try {
+      // Check if user is authenticated using PersistentFileService
+      if (!await _persistentFileService.isUserAuthenticated()) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get User Pool sub for listing user's files
+      final userSub = await _persistentFileService.getUserPoolSub();
+
+      // List files in user's private folder using User Pool sub
+      // Private access level format: private/{userSub}/documents/
       final result = await Amplify.Storage.list(
-        path: StoragePath.fromString('public/documents/'),
+        path: StoragePath.fromString('private/$userSub/documents/'),
       ).result;
 
-      return result.items.map((item) => item.path).toList();
+      final userFiles = result.items.map((item) => item.path).toList();
+      safePrint(
+          'Listed ${userFiles.length} files using User Pool sub-based private access');
+
+      return userFiles;
     } catch (e) {
-      // If we can't list S3 files, return empty list to avoid blocking sync
-      safePrint('Error listing S3 files (continuing without cleanup): $e');
-      return [];
+      // Fallback to legacy username-based listing for backward compatibility
+      safePrint('User Pool sub-based listing failed, trying legacy method: $e');
+
+      try {
+        // Get Cognito username for listing user's files (legacy)
+        final user = await Amplify.Auth.getCurrentUser();
+        final username = user.username;
+
+        if (username.isEmpty) {
+          throw Exception(
+              'No Cognito username available - user may not be properly authenticated');
+        }
+
+        // List files in user's protected folder using username (legacy)
+        final result = await Amplify.Storage.list(
+          path: StoragePath.fromString('protected/$username/documents/'),
+        ).result;
+
+        final legacyFiles = result.items.map((item) => item.path).toList();
+        safePrint(
+            'Listed ${legacyFiles.length} files using legacy username-based access');
+
+        return legacyFiles;
+      } catch (legacyError) {
+        // If we can't list S3 files, return empty list to avoid blocking sync
+        safePrint(
+            'Error listing S3 files (continuing without cleanup): $legacyError');
+        return [];
+      }
     }
   }
 
-  String _generateS3Key(String documentId, String filePath) {
-    // TODO: Update to include userId for proper user isolation
-    // This method is used synchronously, so we'll need to refactor callers
-    // For now, keeping original format but this is a security issue
-    final fileName = filePath.split('/').last;
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    return 'documents/$documentId/$timestamp-$fileName';
+  /// Generate S3 key using User Pool sub-based private access
+  /// Uses PersistentFileService for consistent path generation
+  Future<String> _generateS3Key(String syncId, String filePath) async {
+    try {
+      // Extract filename from file path
+      final fileName = filePath.split('/').last;
+
+      // Use PersistentFileService to generate User Pool sub-based S3 key
+      return await _persistentFileService.generateS3Path(syncId, fileName);
+    } catch (e) {
+      safePrint(
+          'PersistentFileService S3 key generation failed, falling back to legacy method: $e');
+
+      // Fallback to legacy username-based path generation for compatibility
+      final user = await Amplify.Auth.getCurrentUser();
+      final username = user.username;
+
+      if (username.isEmpty) {
+        throw Exception(
+            'No Cognito username available - user may not be properly authenticated');
+      }
+
+      final fileName = filePath.split('/').last;
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // Use syncId for consistency with SimpleFileSyncManager and FileSyncManager
+      // Username-based paths provide consistent access across app reinstalls (legacy)
+      return 'protected/$username/documents/$syncId/$timestamp-$fileName';
+    }
   }
 
   String _formatBytes(int bytes) {
@@ -296,5 +356,39 @@ class StorageManager {
   /// Dispose resources
   Future<void> dispose() async {
     await _storageUpdateController.close();
+  }
+
+  /// Get User Pool sub for debugging purposes
+  /// Uses PersistentFileService for consistent user identification
+  Future<String> getUserPoolSub() async {
+    try {
+      return await _persistentFileService.getUserPoolSub();
+    } catch (e) {
+      safePrint('Error getting User Pool sub: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if user is authenticated
+  /// Uses PersistentFileService for consistent authentication checking
+  Future<bool> isUserAuthenticated() async {
+    try {
+      return await _persistentFileService.isUserAuthenticated();
+    } catch (e) {
+      safePrint('Error checking user authentication: $e');
+      return false;
+    }
+  }
+
+  /// Check if a file exists using User Pool sub-based paths with fallback
+  /// Uses PersistentFileService for consistent file checking
+  Future<bool> fileExists(String syncId, String fileName) async {
+    try {
+      return await _persistentFileService.fileExistsWithFallback(
+          syncId, fileName);
+    } catch (e) {
+      safePrint('Error checking file existence: $e');
+      return false;
+    }
   }
 }

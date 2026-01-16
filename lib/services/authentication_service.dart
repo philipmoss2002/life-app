@@ -35,6 +35,8 @@ class AuthenticationService {
 
   final StreamController<AuthState> _authStateController =
       StreamController<AuthState>.broadcast();
+
+  // Service dependencies
   final AnalyticsService _analyticsService = AnalyticsService();
   final AuthTokenManager _authTokenManager = AuthTokenManager();
   final RealtimeSyncService _realtimeSyncService = RealtimeSyncService();

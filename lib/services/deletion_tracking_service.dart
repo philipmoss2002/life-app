@@ -138,7 +138,7 @@ class DeletionTrackingService {
           'Completing deletion for document: ${document.title} (ID: ${document.syncId})');
 
       // Remove document from local database
-      await _databaseService.deleteDocument(int.parse(document.syncId));
+      await _databaseService.deleteDocumentBySyncId(document.syncId);
       _logInfo('Document removed from local database: ${document.syncId}');
 
       // Tombstone is preserved automatically - it's not tied to the document record
@@ -147,7 +147,8 @@ class DeletionTrackingService {
         _logInfo('Tombstone preserved for syncId: $syncId');
       }
     } catch (e) {
-      _logError('Failed to complete deletion for document ${document.syncId}: $e');
+      _logError(
+          'Failed to complete deletion for document ${document.syncId}: $e');
       rethrow;
     }
   }
@@ -241,7 +242,8 @@ class DeletionTrackingService {
         }
       }
     } catch (e) {
-      _logDebug('Could not extract syncId from document ${document.syncId}: $e');
+      _logDebug(
+          'Could not extract syncId from document ${document.syncId}: $e');
     }
 
     return null;

@@ -114,6 +114,8 @@ class DocumentSyncManager {
       },
       decodePath: 'createDocument',
       modelType: Document.classType,
+      authorizationMode:
+          APIAuthorizationType.userPools, // Use Cognito User Pools
     );
 
     final retryResponse =

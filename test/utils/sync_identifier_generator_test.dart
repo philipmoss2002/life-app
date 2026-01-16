@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:household_docs_app/utils/sync_identifier_generator.dart';
 
 import '../../lib/services/sync_identifier_service.dart';
+
 void main() {
   group('SyncIdentifierGenerator', () {
     group('generate', () {
@@ -23,8 +24,8 @@ void main() {
       });
 
       test('should generate unique identifiers', () {
-        final syncIds =
-            List.generate(100, (_) => SyncIdentifierService.generateValidated());
+        final syncIds = List.generate(
+            100, (_) => SyncIdentifierService.generateValidated());
         final uniqueIds = syncIds.toSet();
 
         expect(uniqueIds.length, equals(syncIds.length));
@@ -74,7 +75,8 @@ void main() {
 
         for (final invalid in invalidFormats) {
           expect(SyncIdentifierGenerator.isValid(invalid), isFalse,
-              reason: 'Should be inval        }
+              reason: 'Should be invalid: $invalid');
+        }
       });
 
       test('should return true for generated UUIDs', () {

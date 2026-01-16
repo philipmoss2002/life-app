@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/subscription_service.dart';
+import '../services/data_cleanup_service.dart';
 import 'sign_in_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'subscription_plans_screen.dart';
@@ -377,6 +378,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
         ListTile(
+          leading: const Icon(Icons.cleaning_services),
+          title: const Text('Clear Cache'),
+          subtitle: const Text('Clear temporary files and thumbnails'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _clearCache(context),
+        ),
+        ListTile(
+          leading: const Icon(Icons.delete_sweep, color: Colors.orange),
+          title: const Text('Clear All Data',
+              style: TextStyle(color: Colors.orange)),
+          subtitle: const Text('Remove all documents and files'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showClearAllDataDialog(context),
+        ),
+        ListTile(
           leading: const Icon(Icons.devices),
           title: const Text('Connected Devices'),
           subtitle: const Text('Manage devices with access to your account'),
@@ -719,6 +735,130 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error checking subscription: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearCache(BuildContext context) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Clearing cache...'),
+            ],
+          ),
+        ),
+      );
+
+      await DataCleanupService().clearCacheOnly();
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cache cleared successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error clearing cache: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showClearAllDataDialog(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Data'),
+        content: const Text(
+            'This will permanently delete all your documents, files, and cached data. '
+            'This action cannot be undone.\n\n'
+            'Are you sure you want to continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _clearAllData(context);
+    }
+  }
+
+  Future<void> _clearAllData(BuildContext context) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Clearing all data...'),
+            ],
+          ),
+        ),
+      );
+
+      await DataCleanupService().clearAllAppData();
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All data cleared successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Sign out user and navigate to sign-in screen
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.signOut();
+
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const SignInScreen()),
+            (route) => false,
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error clearing data: $e'),
             backgroundColor: Colors.red,
           ),
         );

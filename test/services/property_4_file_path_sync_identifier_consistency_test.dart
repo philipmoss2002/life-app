@@ -2,6 +2,7 @@ import 'package:test/test.dart';
 import 'package:household_docs_app/utils/sync_identifier_generator.dart';
 
 import '../../lib/services/sync_identifier_service.dart';
+
 /// **Feature: sync-identifier-refactor, Property 4: File Path Sync Identifier Consistency**
 /// **Validates: Requirements 4.1, 4.3**
 ///
@@ -261,11 +262,11 @@ String _generateRandomFileName() {
 
 String _generateS3Key(String syncId, String fileName) {
   // Simulate the S3 key generation logic from SimpleFileSyncManager
-  // Format: documents/userId/syncId/timestamp-fileName
+  // Format: protected/userId/documents/syncId/timestamp-fileName
   final userId = 'test-user-id'; // In real implementation, this comes from auth
   final timestamp = DateTime.now().millisecondsSinceEpoch;
   final cleanFileName = _basename(fileName); // Remove any path components
-  return 'documents/$userId/$syncId/$timestamp-$cleanFileName';
+  return 'protected/$userId/documents/$syncId/$timestamp-$cleanFileName';
 }
 
 String _basename(String filePath) {
@@ -282,17 +283,20 @@ String _basename(String filePath) {
 }
 
 bool _validateS3KeyFormat(String s3Key, String syncId) {
-  // Validate that S3 key follows expected format: documents/userId/syncId/timestamp-fileName
+  // Validate that S3 key follows expected format: protected/userId/documents/syncId/timestamp-fileName
   final parts = s3Key.split('/');
 
-  // Should have at least 4 parts: documents, userId, syncId, timestamp-fileName
-  if (parts.length < 4) return false;
+  // Should have at least 5 parts: protected, userId, documents, syncId, timestamp-fileName
+  if (parts.length < 5) return false;
 
-  // First part should be 'documents'
-  if (parts[0] != 'documents') return false;
+  // First part should be 'protected'
+  if (parts[0] != 'protected') return false;
 
-  // Third part should be the sync identifier
-  if (parts[2] != syncId) return false;
+  // Third part should be 'documents'
+  if (parts[2] != 'documents') return false;
+
+  // Fourth part should be the sync identifier
+  if (parts[3] != syncId) return false;
 
   // Last part should contain a timestamp and filename
   final fileName = parts.last;
@@ -302,10 +306,10 @@ bool _validateS3KeyFormat(String s3Key, String syncId) {
 }
 
 String _extractSyncIdFromS3Key(String s3Key) {
-  // Extract sync identifier from S3 key format: documents/userId/syncId/timestamp-fileName
+  // Extract sync identifier from S3 key format: protected/userId/documents/syncId/timestamp-fileName
   final parts = s3Key.split('/');
-  if (parts.length >= 3) {
-    return parts[2]; // syncId is the third part
+  if (parts.length >= 4) {
+    return parts[3]; // syncId is the fourth part
   }
   throw ArgumentError('Invalid S3 key format: $s3Key');
 }
