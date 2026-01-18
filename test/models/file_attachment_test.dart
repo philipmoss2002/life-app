@@ -1,257 +1,232 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:household_docs_app/models/FileAttachment.dart';
-import 'package:household_docs_app/models/sync_state.dart';
-import 'package:household_docs_app/models/model_extensions.dart';
-import 'package:amplify_core/amplify_core.dart' as amplify_core;
+import 'package:household_docs_app/models/file_attachment.dart';
 
 void main() {
-  group('FileAttachment Model Tests', () {
-    test('FileAttachment should be created with required fields', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
-        fileName: 'document.pdf',
-        fileSize: 1024,
-        s3Key: 's3://bucket/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.notSynced.toJson(),
-      );
-
-      expect(attachment.filePath, '/path/to/file.pdf');
-      expect(attachment.fileName, 'document.pdf');
-      expect(attachment.id, isNotNull);
-      expect(attachment.label, isNull);
-      expect(attachment.addedAt, isNotNull);
-      expect(attachment.fileSize, 1024);
-      expect(attachment.syncState, SyncState.notSynced.toJson());
-    });
-
-    test('FileAttachment should be created with all fields', () {
-      final addedAt = amplify_core.TemporalDateTime(DateTime(2025, 1, 1));
-
-      final attachment = FileAttachment(
-                filePath: '/path/to/file.pdf',
-        fileName: 'insurance.pdf',
-        label: 'Policy Document',
-        fileSize: 1024000,
-        s3Key: 's3://bucket/key',
-        addedAt: addedAt,
-        syncState: SyncState.synced.toJson(),
-      );
-
-      expect(attachment.id, 'attachment-1');
-      expect(attachment.filePath, '/path/to/file.pdf');
-      expect(attachment.fileName, 'insurance.pdf');
-      expect(attachment.label, 'Policy Document');
-      expect(attachment.fileSize, 1024000);
-      expect(attachment.s3Key, 's3://bucket/key');
-      expect(attachment.addedAt, addedAt);
-      expect(attachment.syncState, SyncState.synced.toJson());
-    });
-
-    test('FileAttachment should convert to map correctly', () {
-      final attachment = FileAttachment(
-                filePath: '/path/to/file.pdf',
+  group('FileAttachment', () {
+    test('creates file attachment with all fields', () {
+      final now = DateTime.now();
+      final file = FileAttachment(
         fileName: 'test.pdf',
-        label: 'Test Label',
-        fileSize: 2048,
-        s3Key: 's3://test/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.pending.toJson(),
-      );
-
-      final map = attachment.toMap();
-
-      expect(map['id'], 'attachment-2');
-      expect(map['filePath'], '/path/to/file.pdf');
-      expect(map['fileName'], 'test.pdf');
-      expect(map['label'], 'Test Label');
-      expect(map['fileSize'], 2048);
-      expect(map['s3Key'], 's3://test/key');
-      expect(map['addedAt'], isNotNull);
-      expect(map['syncState'], 'pending');
-    });
-
-    test('FileAttachment should be created from map correctly', () {
-      final map = {
-        'id': 'attachment-3',
-        'filePath': '/path/to/file.pdf',
-        'fileName': 'document.pdf',
-        'label': 'Important',
-        'fileSize': 4096,
-        's3Key': 's3://bucket/file',
-        'addedAt': '2025-01-01T00:00:00.000',
-        'syncState': 'synced',
-      };
-
-      final attachment = FileAttachmentExtensions.fromMap(map);
-
-      expect(attachment.id, 'attachment-3');
-      expect(attachment.filePath, '/path/to/file.pdf');
-      expect(attachment.fileName, 'document.pdf');
-      expect(attachment.label, 'Important');
-      expect(attachment.fileSize, 4096);
-      expect(attachment.s3Key, 's3://bucket/file');
-      expect(attachment.addedDateTime, DateTime.utc(2025, 1, 1));
-      expect(attachment.syncState, 'synced');
-    });
-
-    test('FileAttachment should handle null optional fields in map', () {
-      final map = {
-        'id': 'attachment-4',
-        'filePath': '/path/to/file.pdf',
-        'fileName': 'test.pdf',
-        'label': null,
-        's3Key': '',
-        'addedAt': '2025-01-01T00:00:00.000',
-      };
-
-      final attachment = FileAttachmentExtensions.fromMap(map);
-
-      expect(attachment.label, isNull);
-      expect(attachment.s3Key, '');
-      expect(attachment.fileSize, 0);
-      expect(attachment.syncState, SyncState.notSynced.toJson());
-    });
-
-    test('FileAttachment should return label if present', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
-        fileName: 'document.pdf',
-        label: 'My Label',
-        fileSize: 1024,
+        localPath: '/path/to/file',
         s3Key: 's3://bucket/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.notSynced.toJson(),
-      );
-
-      expect(attachment.label, 'My Label');
-    });
-
-    test('FileAttachment should return fileName when label is null', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
-        fileName: 'document.pdf',
         fileSize: 1024,
-        s3Key: 's3://bucket/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.notSynced.toJson(),
+        addedAt: now,
       );
 
-      expect(attachment.fileName, 'document.pdf');
-      expect(attachment.label, isNull);
+      expect(file.fileName, equals('test.pdf'));
+      expect(file.localPath, equals('/path/to/file'));
+      expect(file.s3Key, equals('s3://bucket/key'));
+      expect(file.fileSize, equals(1024));
+      expect(file.addedAt, equals(now));
     });
 
-    test('FileAttachment copyWith should update fields correctly', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
+    test('creates file attachment with minimal fields', () {
+      final now = DateTime.now();
+      final file = FileAttachment(
         fileName: 'test.pdf',
-        fileSize: 1024,
-        s3Key: 's3://old/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.notSynced.toJson(),
+        addedAt: now,
       );
 
-      final updated = attachment.copyWith(
-        label: 'New Label',
-        fileSize: 2048,
+      expect(file.fileName, equals('test.pdf'));
+      expect(file.localPath, isNull);
+      expect(file.s3Key, isNull);
+      expect(file.fileSize, isNull);
+      expect(file.addedAt, equals(now));
+    });
+
+    test('copyWith creates new instance with updated fields', () {
+      final original = FileAttachment(
+        fileName: 'original.pdf',
+        addedAt: DateTime.now(),
+      );
+
+      final updated = original.copyWith(
+        fileName: 'updated.pdf',
         s3Key: 's3://new/key',
-        syncState: SyncState.synced.toJson(),
       );
 
-      expect(updated.label, 'New Label');
-      expect(updated.fileSize, 2048);
-      expect(updated.s3Key, 's3://new/key');
-      expect(updated.syncState, SyncState.synced.toJson());
-      expect(updated.filePath, attachment.filePath);
-      expect(updated.fileName, attachment.fileName);
+      expect(updated.fileName, equals('updated.pdf'));
+      expect(updated.s3Key, equals('s3://new/key'));
+      expect(updated.addedAt, equals(original.addedAt));
     });
-  });
 
-  group('FileAttachment Sync State Tests', () {
-    test('FileAttachment should transition from notSynced to pending', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
+    test('toJson and fromJson round trip', () {
+      final original = FileAttachment(
         fileName: 'test.pdf',
-        fileSize: 1024,
+        localPath: '/path/to/file',
         s3Key: 's3://bucket/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.notSynced.toJson(),
+        fileSize: 2048,
+        addedAt: DateTime.now(),
       );
 
-      final updated =
-          attachment.copyWith(syncState: SyncState.pending.toJson());
+      final json = original.toJson();
+      final restored = FileAttachment.fromJson(json);
 
-      expect(attachment.syncState, SyncState.notSynced.toJson());
-      expect(updated.syncState, SyncState.pending.toJson());
+      expect(restored.fileName, equals(original.fileName));
+      expect(restored.localPath, equals(original.localPath));
+      expect(restored.s3Key, equals(original.s3Key));
+      expect(restored.fileSize, equals(original.fileSize));
+      expect(
+        restored.addedAt.millisecondsSinceEpoch,
+        equals(original.addedAt.millisecondsSinceEpoch),
+      );
     });
 
-    test('FileAttachment should transition from pending to syncing', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
+    test('toDatabase and fromDatabase round trip', () {
+      final original = FileAttachment(
         fileName: 'test.pdf',
-        fileSize: 1024,
+        localPath: '/path/to/file',
         s3Key: 's3://bucket/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.pending.toJson(),
+        fileSize: 2048,
+        addedAt: DateTime.now(),
       );
 
-      final updated =
-          attachment.copyWith(syncState: SyncState.syncing.toJson());
+      final dbMap = original.toDatabase('test-sync-id');
+      final restored = FileAttachment.fromDatabase(dbMap);
 
-      expect(updated.syncState, SyncState.syncing.toJson());
+      expect(restored.fileName, equals(original.fileName));
+      expect(restored.localPath, equals(original.localPath));
+      expect(restored.s3Key, equals(original.s3Key));
+      expect(restored.fileSize, equals(original.fileSize));
+      expect(
+        restored.addedAt.millisecondsSinceEpoch,
+        equals(original.addedAt.millisecondsSinceEpoch),
+      );
     });
 
-    test('FileAttachment should transition from syncing to synced with s3Key',
-        () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
+    test('toDatabase includes syncId', () {
+      final file = FileAttachment(
         fileName: 'test.pdf',
-        fileSize: 1024,
-        s3Key: 's3://bucket/temp',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.syncing.toJson(),
+        addedAt: DateTime.now(),
       );
 
-      final updated = attachment.copyWith(
-        syncState: SyncState.synced.toJson(),
-        s3Key: 's3://bucket/uploaded-file',
-      );
+      final dbMap = file.toDatabase('my-sync-id');
 
-      expect(updated.syncState, SyncState.synced.toJson());
-      expect(updated.s3Key, 's3://bucket/uploaded-file');
+      expect(dbMap['sync_id'], equals('my-sync-id'));
+      expect(dbMap['file_name'], equals('test.pdf'));
     });
 
-    test('FileAttachment should transition to error state', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
+    test('validate throws on empty fileName', () {
+      final file = FileAttachment(
+        fileName: '',
+        addedAt: DateTime.now(),
+      );
+
+      expect(() => file.validate(), throwsArgumentError);
+    });
+
+    test('validate succeeds with valid file', () {
+      final file = FileAttachment(
+        fileName: 'valid.pdf',
+        addedAt: DateTime.now(),
+      );
+
+      expect(() => file.validate(), returnsNormally);
+    });
+
+    test('isDownloaded returns true when localPath is set', () {
+      final file = FileAttachment(
         fileName: 'test.pdf',
-        fileSize: 1024,
+        localPath: '/path/to/file',
+        addedAt: DateTime.now(),
+      );
+
+      expect(file.isDownloaded, isTrue);
+    });
+
+    test('isDownloaded returns false when localPath is null', () {
+      final file = FileAttachment(
+        fileName: 'test.pdf',
+        addedAt: DateTime.now(),
+      );
+
+      expect(file.isDownloaded, isFalse);
+    });
+
+    test('isUploaded returns true when s3Key is set', () {
+      final file = FileAttachment(
+        fileName: 'test.pdf',
         s3Key: 's3://bucket/key',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.syncing.toJson(),
+        addedAt: DateTime.now(),
       );
 
-      final updated = attachment.copyWith(syncState: SyncState.error.toJson());
-
-      expect(updated.syncState, SyncState.error.toJson());
+      expect(file.isUploaded, isTrue);
     });
 
-    test('FileAttachment should handle s3Key updates', () {
-      final attachment = FileAttachment(
-        filePath: '/path/to/file.pdf',
+    test('isUploaded returns false when s3Key is null', () {
+      final file = FileAttachment(
         fileName: 'test.pdf',
+        addedAt: DateTime.now(),
+      );
+
+      expect(file.isUploaded, isFalse);
+    });
+
+    test('equality operator works correctly', () {
+      final now = DateTime.now();
+      final file1 = FileAttachment(
+        fileName: 'test.pdf',
+        localPath: '/path',
+        addedAt: now,
+      );
+      final file2 = FileAttachment(
+        fileName: 'test.pdf',
+        localPath: '/path',
+        addedAt: now,
+      );
+      final file3 = FileAttachment(
+        fileName: 'different.pdf',
+        addedAt: now,
+      );
+
+      expect(file1, equals(file2));
+      expect(file1, isNot(equals(file3)));
+    });
+
+    test('hashCode is consistent', () {
+      final now = DateTime.now();
+      final file1 = FileAttachment(
+        fileName: 'test.pdf',
+        addedAt: now,
+      );
+      final file2 = FileAttachment(
+        fileName: 'test.pdf',
+        addedAt: now,
+      );
+
+      expect(file1.hashCode, equals(file2.hashCode));
+    });
+
+    test('toString provides useful information', () {
+      final file = FileAttachment(
+        fileName: 'test.pdf',
+        localPath: '/path/to/file',
+        s3Key: 's3://bucket/key',
         fileSize: 1024,
-        s3Key: 's3://bucket/file',
-        addedAt: amplify_core.TemporalDateTime.now(),
-        syncState: SyncState.synced.toJson(),
+        addedAt: DateTime.now(),
       );
 
-      final updated = attachment.copyWith(
-        s3Key: 's3://bucket/new-file',
+      final str = file.toString();
+
+      expect(str, contains('FileAttachment'));
+      expect(str, contains('test.pdf'));
+      expect(str, contains('/path/to/file'));
+      expect(str, contains('s3://bucket/key'));
+      expect(str, contains('1024'));
+    });
+
+    test('handles null optional fields in JSON round trip', () {
+      final original = FileAttachment(
+        fileName: 'test.pdf',
+        addedAt: DateTime.now(),
       );
 
-      expect(updated.s3Key, 's3://bucket/new-file');
-      expect(updated.syncState, SyncState.synced.toJson());
+      final json = original.toJson();
+      final restored = FileAttachment.fromJson(json);
+
+      expect(restored.localPath, isNull);
+      expect(restored.s3Key, isNull);
+      expect(restored.fileSize, isNull);
     });
   });
 }

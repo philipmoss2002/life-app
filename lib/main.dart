@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tz;
-import 'screens/home_screen.dart';
-import 'services/database_service.dart';
-import 'services/notification_service.dart';
-import 'services/subscription_service.dart';
-import 'services/data_cleanup_service.dart';
-import 'providers/auth_provider.dart';
+import 'screens/sign_in_screen.dart';
+import 'screens/new_document_list_screen.dart';
+import 'services/new_database_service.dart';
+import 'services/authentication_service.dart';
 import 'services/amplify_service.dart';
 
 void main() async {
@@ -18,49 +15,17 @@ void main() async {
 
   // Initialize database
   try {
-    await DatabaseService.instance.database;
+    await NewDatabaseService.instance.database;
     debugPrint('Database initialized successfully');
   } catch (e) {
     debugPrint('Failed to initialize database: $e');
   }
 
-  // Initialize notifications
-  try {
-    await NotificationService.instance.initialize();
-    debugPrint('Notifications initialized successfully');
-  } catch (e) {
-    debugPrint('Failed to initialize notifications: $e');
-  }
-
-  // Initialize data cleanup service
-  try {
-    await DataCleanupService().initialize();
-    debugPrint('Data cleanup service initialized successfully');
-  } catch (e) {
-    debugPrint('Failed to initialize data cleanup service: $e');
-  }
-
-  // Initialize subscription service
-  _initializeSubscriptionService();
-
-  // Start the app immediately
-  runApp(const HouseholdDocsApp());
-
   // Initialize Amplify in the background (non-blocking)
   _initializeAmplifyInBackground();
-}
 
-void _initializeSubscriptionService() {
-  Future.delayed(Duration.zero, () async {
-    try {
-      debugPrint('Initializing subscription service...');
-      await SubscriptionService().initialize();
-      debugPrint('Subscription service initialized successfully');
-    } catch (e) {
-      debugPrint('Failed to initialize subscription service: $e');
-      debugPrint('Subscription features may not work properly');
-    }
-  });
+  // Start the app
+  runApp(const HouseholdDocsApp());
 }
 
 void _initializeAmplifyInBackground() {
@@ -78,7 +43,6 @@ void _initializeAmplifyInBackground() {
     } catch (e) {
       debugPrint('Failed to initialize Amplify: $e');
       debugPrint('App will run in local-only mode');
-      // App can still work in local-only mode
     }
   });
 }
@@ -88,16 +52,63 @@ class HouseholdDocsApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AuthProvider(),
-      child: MaterialApp(
-        title: 'Household Docs',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-          useMaterial3: true,
-        ),
-        home: const HomeScreen(),
+    return MaterialApp(
+      title: 'Household Docs',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
       ),
+      home: const AuthenticationWrapper(),
     );
+  }
+}
+
+class AuthenticationWrapper extends StatefulWidget {
+  const AuthenticationWrapper({super.key});
+
+  @override
+  State<AuthenticationWrapper> createState() => _AuthenticationWrapperState();
+}
+
+class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
+  final AuthenticationService _authService = AuthenticationService();
+  bool _isAuthenticated = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      setState(() {
+        _isAuthenticated = isAuth;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error checking auth status: $e');
+      setState(() {
+        _isAuthenticated = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return _isAuthenticated
+        ? const NewDocumentListScreen()
+        : const SignInScreen();
   }
 }

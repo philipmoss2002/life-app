@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import '../services/authentication_service.dart';
+import '../services/sync_service.dart';
 import 'sign_up_screen.dart';
-import 'forgot_password_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -15,6 +14,8 @@ class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthenticationService();
+  final _syncService = SyncService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -38,28 +39,25 @@ class _SignInScreenState extends State<SignInScreen> {
     });
 
     try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final success = await authProvider.signIn(
+      await _authService.signIn(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
       if (mounted) {
-        if (success) {
-          // Navigate back to home screen with success
-          Navigator.pop(context, true);
-        } else {
-          setState(() {
-            _errorMessage = 'Failed to sign in. Please try again.';
-            _isLoading = false;
-          });
-        }
+        // Trigger sync on app launch after successful sign in
+        _syncService.syncOnAppLaunch();
+
+        // Navigate back to home screen with success
+        Navigator.pop(context, true);
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = _getErrorMessage(e.toString());
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = _getErrorMessage(e.toString());
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -185,23 +183,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   onFieldSubmitted: (_) => _handleSignIn(),
                 ),
                 const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _isLoading
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const ForgotPasswordScreen(),
-                              ),
-                            );
-                          },
-                    child: const Text('Forgot Password?'),
-                  ),
-                ),
+                const SizedBox(height: 8),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _handleSignIn,

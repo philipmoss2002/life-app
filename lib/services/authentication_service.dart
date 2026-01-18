@@ -1,53 +1,58 @@
 import 'dart:async';
-import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
-import 'analytics_service.dart';
-import 'auth_token_manager.dart';
-import 'realtime_sync_service.dart';
+import 'package:amplify_flutter/amplify_flutter.dart';
+import '../models/auth_state.dart';
 
-/// Enum representing the authentication state
-enum AuthState {
-  authenticated,
-  unauthenticated,
-  unknown,
+/// Custom exception for authentication errors
+class AuthenticationException implements Exception {
+  final String message;
+  AuthenticationException(this.message);
+
+  @override
+  String toString() => 'AuthenticationException: $message';
 }
 
-/// Model representing a user
-class AppUser {
-  final String id;
-  final String email;
-  final String? displayName;
-
-  AppUser({
-    required this.id,
-    required this.email,
-    this.displayName,
-  });
-}
-
-/// Service to manage user authentication using AWS Cognito
-/// Handles sign up, sign in, sign out, password reset, and session management
+/// Service for managing user authentication via AWS Cognito
 class AuthenticationService {
   static final AuthenticationService _instance =
       AuthenticationService._internal();
   factory AuthenticationService() => _instance;
-  AuthenticationService._internal();
 
-  final StreamController<AuthState> _authStateController =
-      StreamController<AuthState>.broadcast();
+  AuthenticationService._internal() {
+    _initializeAuthListener();
+  }
 
-  // Service dependencies
-  final AnalyticsService _analyticsService = AnalyticsService();
-  final AuthTokenManager _authTokenManager = AuthTokenManager();
-  final RealtimeSyncService _realtimeSyncService = RealtimeSyncService();
+  String? _cachedIdentityPoolId;
+  final _authStateController = StreamController<AuthState>.broadcast();
+  StreamSubscription<AuthHubEvent>? _authHubSubscription;
 
   /// Stream of authentication state changes
-  Stream<AuthState> get authStateChanges => _authStateController.stream;
+  Stream<AuthState> get authStateStream => _authStateController.stream;
+
+  /// Initialize listener for Amplify auth events
+  void _initializeAuthListener() {
+    _authHubSubscription = Amplify.Hub.listen(HubChannel.Auth, (event) async {
+      switch (event.type) {
+        case AuthHubEventType.signedIn:
+        case AuthHubEventType.signedOut:
+        case AuthHubEventType.sessionExpired:
+          final authState = await getAuthState();
+          _authStateController.add(authState);
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  /// Dispose resources
+  void dispose() {
+    _authHubSubscription?.cancel();
+    _authStateController.close();
+  }
 
   /// Sign up a new user with email and password
-  /// Returns the created user on success
-  /// Throws an exception if sign up fails
-  Future<AppUser> signUp(String email, String password) async {
+  Future<AuthResult> signUp(String email, String password) async {
     try {
       final result = await Amplify.Auth.signUp(
         username: email,
@@ -59,41 +64,22 @@ class AuthenticationService {
         ),
       );
 
-      // Check if email verification is required
-      if (!result.isSignUpComplete) {
-        safePrint('Sign up requires email verification');
-      }
-
-      // Track successful sign up
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.signUp,
-        success: true,
-      );
-
-      // Get user details after sign up
-      final userId = result.userId ?? email;
-      return AppUser(
-        id: userId,
-        email: email,
+      return AuthResult(
+        success: result.isSignUpComplete,
+        message: result.isSignUpComplete
+            ? 'Sign up successful'
+            : 'Please confirm your email',
+        needsConfirmation: !result.isSignUpComplete,
       );
     } on AuthException catch (e) {
-      safePrint('Error signing up: ${e.message}');
-
-      // Track failed sign up
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.signUp,
-        success: false,
-        errorMessage: e.message,
-      );
-
-      rethrow;
+      throw AuthenticationException('Sign up failed: ${e.message}');
+    } catch (e) {
+      throw AuthenticationException('Sign up failed: $e');
     }
   }
 
   /// Sign in an existing user with email and password
-  /// Returns the authenticated user on success
-  /// Throws an exception if sign in fails
-  Future<AppUser> signIn(String email, String password) async {
+  Future<AuthResult> signIn(String email, String password) async {
     try {
       final result = await Amplify.Auth.signIn(
         username: email,
@@ -101,129 +87,38 @@ class AuthenticationService {
       );
 
       if (result.isSignedIn) {
-        _authStateController.add(AuthState.authenticated);
+        // Cache Identity Pool ID after successful sign in
+        await getIdentityPoolId();
 
-        // Track successful sign in
-        await _analyticsService.trackAuthEvent(
-          type: AuthEventType.signIn,
-          success: true,
-        );
-
-        // Get user attributes
-        final user = await _getCurrentUser();
-        return user;
-      } else {
-        throw Exception('Sign in not complete');
+        // Emit auth state change
+        final authState = await getAuthState();
+        _authStateController.add(authState);
       }
-    } on AuthException catch (e) {
-      safePrint('Error signing in: ${e.message}');
-      _authStateController.add(AuthState.unauthenticated);
 
-      // Track failed sign in
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.signIn,
-        success: false,
-        errorMessage: e.message,
+      return AuthResult(
+        success: result.isSignedIn,
+        message:
+            result.isSignedIn ? 'Sign in successful' : 'Sign in incomplete',
       );
-
-      rethrow;
+    } on AuthException catch (e) {
+      throw AuthenticationException('Sign in failed: ${e.message}');
+    } catch (e) {
+      throw AuthenticationException('Sign in failed: $e');
     }
   }
 
-  /// Sign out the current user
-  /// Clears all authentication tokens and stops synchronization
+  /// Sign out the current user and clear cached credentials
   Future<void> signOut() async {
     try {
-      // Stop all sync operations before signing out
-      await _realtimeSyncService.handleSignOut();
-      await _authTokenManager.handleSignOut();
+      await Amplify.Auth.signOut();
+      _cachedIdentityPoolId = null;
 
-      // Force global sign out to clear all sessions
-      await Amplify.Auth.signOut(
-        options: const SignOutOptions(globalSignOut: true),
-      );
-
-      _authStateController.add(AuthState.unauthenticated);
-
-      // Track sign out
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.signOut,
-        success: true,
-      );
-
-      safePrint('User signed out successfully with global sign out');
+      // Emit auth state change
+      _authStateController.add(AuthState(isAuthenticated: false));
     } on AuthException catch (e) {
-      safePrint('Error signing out: ${e.message}');
-
-      // Even if Amplify sign-out fails, we should still clean up local state
-      try {
-        await _realtimeSyncService.handleSignOut();
-        await _authTokenManager.handleSignOut();
-        _authStateController.add(AuthState.unauthenticated);
-      } catch (cleanupError) {
-        safePrint('Error during sign-out cleanup: $cleanupError');
-      }
-
-      // Track failed sign out
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.signOut,
-        success: false,
-        errorMessage: e.message,
-      );
-
-      rethrow;
-    }
-  }
-
-  /// Reset password for a user
-  /// Sends a password reset code to the user's email
-  Future<void> resetPassword(String email) async {
-    try {
-      final result = await Amplify.Auth.resetPassword(
-        username: email,
-      );
-
-      if (result.isPasswordReset) {
-        safePrint('Password reset complete');
-      } else {
-        safePrint('Password reset requires confirmation');
-      }
-
-      // Track password reset
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.passwordReset,
-        success: true,
-      );
-    } on AuthException catch (e) {
-      safePrint('Error resetting password: ${e.message}');
-
-      // Track failed password reset
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.passwordReset,
-        success: false,
-        errorMessage: e.message,
-      );
-
-      rethrow;
-    }
-  }
-
-  /// Confirm password reset with the code sent to email
-  Future<void> confirmResetPassword({
-    required String email,
-    required String newPassword,
-    required String confirmationCode,
-  }) async {
-    try {
-      await Amplify.Auth.confirmResetPassword(
-        username: email,
-        newPassword: newPassword,
-        confirmationCode: confirmationCode,
-      );
-      safePrint('Password reset confirmed');
-    } on AuthException catch (e) {
-      safePrint('Error confirming password reset: ${e.message}');
-      rethrow;
+      throw AuthenticationException('Sign out failed: ${e.message}');
+    } catch (e) {
+      throw AuthenticationException('Sign out failed: $e');
     }
   }
 
@@ -232,121 +127,121 @@ class AuthenticationService {
     try {
       final session = await Amplify.Auth.fetchAuthSession();
       return session.isSignedIn;
-    } on AuthException catch (e) {
-      safePrint('Error checking authentication: ${e.message}');
+    } catch (e) {
       return false;
     }
   }
 
-  /// Get the current authentication token
-  /// Returns null if not authenticated
-  Future<String?> getAuthToken() async {
+  /// Get the current authentication state
+  Future<AuthState> getAuthState() async {
     try {
-      final session =
-          await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
+      final session = await Amplify.Auth.fetchAuthSession();
 
-      if (session.isSignedIn) {
-        return session.userPoolTokensResult.value.idToken.raw;
+      if (!session.isSignedIn) {
+        return AuthState(isAuthenticated: false);
       }
-      return null;
-    } on AuthException catch (e) {
-      safePrint('Error getting auth token: ${e.message}');
-      return null;
-    }
-  }
 
-  /// Get the current authenticated user
-  /// Returns null if not authenticated
-  Future<AppUser?> getCurrentUser() async {
-    try {
-      final isAuth = await isAuthenticated();
-      if (!isAuth) {
-        return null;
-      }
-      return await _getCurrentUser();
+      final user = await Amplify.Auth.getCurrentUser();
+      final identityPoolId = await getIdentityPoolId();
+
+      return AuthState(
+        isAuthenticated: true,
+        userEmail: user.username,
+        identityPoolId: identityPoolId,
+        lastAuthTime: DateTime.now(),
+      );
     } catch (e) {
-      safePrint('Error getting current user: $e');
-      return null;
+      return AuthState(isAuthenticated: false);
     }
   }
 
-  /// Internal method to get current user details
-  Future<AppUser> _getCurrentUser() async {
-    final attributes = await Amplify.Auth.fetchUserAttributes();
+  /// Get the persistent Identity Pool ID for the current user
+  ///
+  /// The Identity Pool ID is persistent and tied to the User Pool identity.
+  /// It remains constant across app reinstalls when the user signs in.
+  Future<String> getIdentityPoolId() async {
+    // Return cached value if available
+    if (_cachedIdentityPoolId != null) {
+      return _cachedIdentityPoolId!;
+    }
 
-    String? email;
-    String? userId;
+    try {
+      final session = await Amplify.Auth.fetchAuthSession();
 
-    for (final attribute in attributes) {
-      if (attribute.userAttributeKey == AuthUserAttributeKey.email) {
-        email = attribute.value;
-      } else if (attribute.userAttributeKey == AuthUserAttributeKey.sub) {
-        userId = attribute.value;
+      if (!session.isSignedIn) {
+        throw AuthenticationException('User is not signed in');
       }
-    }
 
-    return AppUser(
-      id: userId ?? '',
-      email: email ?? '',
-    );
-  }
+      // Get Identity Pool ID from Cognito session
+      if (session is CognitoAuthSession) {
+        final identityId = session.identityIdResult.value;
 
-  /// Delete the current user account (GDPR compliance)
-  /// This permanently deletes the user from AWS Cognito
-  Future<void> deleteUserAccount() async {
-    try {
-      await Amplify.Auth.deleteUser();
-      _authStateController.add(AuthState.unauthenticated);
+        if (identityId == null || identityId.isEmpty) {
+          throw AuthenticationException('Identity Pool ID not available');
+        }
 
-      // Track account deletion
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.accountDeleted,
-        success: true,
-      );
+        // Validate Identity Pool ID format (should match AWS pattern)
+        if (!_isValidIdentityPoolId(identityId)) {
+          throw AuthenticationException('Invalid Identity Pool ID format');
+        }
 
-      safePrint('User account deleted successfully');
+        // Cache the Identity Pool ID
+        _cachedIdentityPoolId = identityId;
+        return identityId;
+      }
+
+      throw AuthenticationException('Invalid session type');
     } on AuthException catch (e) {
-      safePrint('Error deleting user account: ${e.message}');
-
-      // Track failed account deletion
-      await _analyticsService.trackAuthEvent(
-        type: AuthEventType.accountDeleted,
-        success: false,
-        errorMessage: e.message,
-      );
-
-      rethrow;
-    }
-  }
-
-  /// Force clear all authentication state and sessions
-  /// Use this when experiencing session mix-up issues
-  Future<void> forceSignOutAndClearState() async {
-    try {
-      safePrint('Force clearing all authentication state');
-
-      // Clear all local state first
-      await _realtimeSyncService.handleSignOut();
-      await _authTokenManager.handleSignOut();
-
-      // Force global sign out
-      await Amplify.Auth.signOut(
-        options: const SignOutOptions(globalSignOut: true),
-      );
-
-      // Clear auth state
-      _authStateController.add(AuthState.unauthenticated);
-
-      safePrint('Successfully force cleared all authentication state');
+      throw AuthenticationException(
+          'Failed to get Identity Pool ID: ${e.message}');
     } catch (e) {
-      safePrint('Error during force sign out: $e');
-      // Still clear local state even if remote sign out fails
-      _authStateController.add(AuthState.unauthenticated);
+      if (e is AuthenticationException) rethrow;
+      throw AuthenticationException('Failed to get Identity Pool ID: $e');
     }
   }
 
-  /// Dispose resources
-  void dispose() {
-    _authStateController.close();
+  /// Validate Identity Pool ID format
+  /// Expected format: region:uuid (e.g., us-east-1:12345678-1234-1234-1234-123456789012)
+  bool _isValidIdentityPoolId(String identityId) {
+    final pattern = RegExp(r'^[a-z]{2}-[a-z]+-\d+:[a-f0-9-]+$');
+    return pattern.hasMatch(identityId);
   }
+
+  /// Refresh authentication credentials
+  ///
+  /// Forces a refresh of the authentication session and Identity Pool ID.
+  /// Useful when credentials expire or need to be updated.
+  Future<void> refreshCredentials() async {
+    try {
+      await Amplify.Auth.fetchAuthSession(
+        options: const FetchAuthSessionOptions(forceRefresh: true),
+      );
+
+      // Refresh cached Identity Pool ID
+      _cachedIdentityPoolId = null;
+      await getIdentityPoolId();
+
+      // Emit updated auth state
+      final authState = await getAuthState();
+      _authStateController.add(authState);
+    } on AuthException catch (e) {
+      throw AuthenticationException(
+          'Failed to refresh credentials: ${e.message}');
+    } catch (e) {
+      throw AuthenticationException('Failed to refresh credentials: $e');
+    }
+  }
+}
+
+/// Result of an authentication operation
+class AuthResult {
+  final bool success;
+  final String message;
+  final bool needsConfirmation;
+
+  AuthResult({
+    required this.success,
+    required this.message,
+    this.needsConfirmation = false,
+  });
 }

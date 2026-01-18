@@ -1,97 +1,57 @@
-/// Synchronization state enum for documents
+/// Sync state for documents
+///
+/// Indicates the current synchronization status of a document.
 enum SyncState {
-  /// Document has not been synced to cloud
-  notSynced,
-
-  /// Document is pending sync
-  pending,
-
-  /// Document is currently being synced
-  syncing,
-
-  /// Document has been successfully synced
+  /// File is synced (uploaded and available)
   synced,
 
-  /// Document sync failed
+  /// File needs to be uploaded
+  pendingUpload,
+
+  /// File needs to be downloaded
+  pendingDownload,
+
+  /// Upload in progress
+  uploading,
+
+  /// Download in progress
+  downloading,
+
+  /// Sync error occurred
   error,
+}
 
-  /// Document has a conflict that needs resolution
-  conflict,
+/// Extension methods for SyncState
+extension SyncStateExtension on SyncState {
+  /// Check if the document is in a pending state
+  bool get isPending =>
+      this == SyncState.pendingUpload || this == SyncState.pendingDownload;
 
-  /// Document is pending deletion from cloud
-  pendingDeletion;
+  /// Check if the document is currently syncing
+  bool get isSyncing =>
+      this == SyncState.uploading || this == SyncState.downloading;
 
-  /// Convert enum to JSON string
-  String toJson() {
-    switch (this) {
-      case SyncState.notSynced:
-        return 'notSynced';
-      case SyncState.pending:
-        return 'pending';
-      case SyncState.syncing:
-        return 'syncing';
-      case SyncState.synced:
-        return 'synced';
-      case SyncState.error:
-        return 'error';
-      case SyncState.conflict:
-        return 'conflict';
-      case SyncState.pendingDeletion:
-        return 'pendingDeletion';
-    }
-  }
-
-  /// Create enum from JSON string
-  static SyncState fromJson(String json) {
-    switch (json) {
-      case 'notSynced':
-        return SyncState.notSynced;
-      case 'pending':
-        return SyncState.pending;
-      case 'syncing':
-        return SyncState.syncing;
-      case 'synced':
-        return SyncState.synced;
-      case 'error':
-        return SyncState.error;
-      case 'conflict':
-        return SyncState.conflict;
-      case 'pendingDeletion':
-        return SyncState.pendingDeletion;
-      default:
-        return SyncState.notSynced;
-    }
-  }
-
-  /// Get display name for the sync state
-  String get displayName {
-    switch (this) {
-      case SyncState.notSynced:
-        return 'Not Synced';
-      case SyncState.pending:
-        return 'Pending';
-      case SyncState.syncing:
-        return 'Syncing';
-      case SyncState.synced:
-        return 'Synced';
-      case SyncState.error:
-        return 'Error';
-      case SyncState.conflict:
-        return 'Conflict';
-      case SyncState.pendingDeletion:
-        return 'Deleting';
-    }
-  }
-
-  /// Check if the state indicates sync is in progress
-  bool get isSyncing => this == SyncState.syncing;
-
-  /// Check if the state indicates successful sync
+  /// Check if the document is synced
   bool get isSynced => this == SyncState.synced;
 
-  /// Check if the state indicates an error
+  /// Check if there was an error
   bool get hasError => this == SyncState.error;
 
-  /// Check if the state indicates a conflict
-  bool get hasConflict => this == SyncState.conflict;
+  /// Get a human-readable description
+  String get description {
+    switch (this) {
+      case SyncState.synced:
+        return 'Synced';
+      case SyncState.pendingUpload:
+        return 'Pending Upload';
+      case SyncState.pendingDownload:
+        return 'Pending Download';
+      case SyncState.uploading:
+        return 'Uploading...';
+      case SyncState.downloading:
+        return 'Downloading...';
+      case SyncState.error:
+        return 'Sync Error';
+    }
+  }
 }
