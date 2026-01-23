@@ -43,8 +43,9 @@ class NewDatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 3, // Incremented for file attachment labels
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -54,8 +55,9 @@ class NewDatabaseService {
       CREATE TABLE documents (
         sync_id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
-        description TEXT,
-        labels TEXT,
+        category TEXT NOT NULL,
+        date INTEGER,
+        notes TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         sync_state TEXT NOT NULL DEFAULT 'pendingUpload'
@@ -68,6 +70,7 @@ class NewDatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sync_id TEXT NOT NULL,
         file_name TEXT NOT NULL,
+        label TEXT,
         local_path TEXT,
         s3_key TEXT,
         file_size INTEGER,
@@ -97,6 +100,79 @@ class NewDatabaseService {
     await db.execute('CREATE INDEX idx_logs_level ON logs(level)');
 
     debugPrint('✅ Database schema created successfully');
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    debugPrint('🔄 Upgrading database from version $oldVersion to $newVersion');
+
+    if (oldVersion < 2) {
+      // Migration from v1 to v2: Add category and date fields
+      debugPrint('📝 Adding category and date columns to documents table');
+
+      // Add category column with default value
+      await db.execute('''
+        ALTER TABLE documents ADD COLUMN category TEXT NOT NULL DEFAULT 'other'
+      ''');
+
+      // Add date column (nullable)
+      await db.execute('''
+        ALTER TABLE documents ADD COLUMN date INTEGER
+      ''');
+
+      // Rename description to notes if it exists (from old schema)
+      try {
+        await db.execute('''
+          ALTER TABLE documents RENAME COLUMN description TO notes
+        ''');
+        debugPrint('✅ Renamed description column to notes');
+      } catch (e) {
+        // Column might not exist or already renamed
+        debugPrint('ℹ️ Description column not found (may already be migrated)');
+      }
+
+      debugPrint('✅ Database upgraded to version 2');
+    }
+
+    if (oldVersion < 3) {
+      // Migration from v2 to v3: Move labels from documents to file_attachments
+      debugPrint('📝 Moving labels from documents to file_attachments');
+
+      // Step 1: Create new documents table without labels column
+      // SQLite doesn't support DROP COLUMN, so we recreate the table
+      await db.execute('''
+        CREATE TABLE documents_new (
+          sync_id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          category TEXT NOT NULL,
+          date INTEGER,
+          notes TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          sync_state TEXT NOT NULL DEFAULT 'pendingUpload'
+        )
+      ''');
+
+      // Step 2: Copy data from old table to new table (excluding labels)
+      await db.execute('''
+        INSERT INTO documents_new 
+        SELECT sync_id, title, category, date, notes, created_at, updated_at, sync_state
+        FROM documents
+      ''');
+
+      // Step 3: Drop old table and rename new table
+      await db.execute('DROP TABLE documents');
+      await db.execute('ALTER TABLE documents_new RENAME TO documents');
+
+      // Step 4: Add label column to file_attachments table
+      await db.execute('ALTER TABLE file_attachments ADD COLUMN label TEXT');
+
+      // Step 5: Recreate indexes
+      await db.execute(
+          'CREATE INDEX idx_documents_sync_state ON documents(sync_state)');
+
+      debugPrint(
+          '✅ Database upgraded to version 3: Labels moved to file attachments');
+    }
   }
 
   /// Close the database connection

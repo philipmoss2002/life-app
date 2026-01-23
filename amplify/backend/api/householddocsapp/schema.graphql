@@ -8,17 +8,13 @@ type Document @model @auth(rules: [{allow: owner, ownerField: "userId", identity
   userId: String! @index(name: "byUserId", sortKeyFields: ["createdAt"])
   title: String!
   category: String!
-  filePaths: [String!]!
-  renewalDate: AWSDateTime
+  date: AWSDateTime
   notes: String
   createdAt: AWSDateTime!
-  lastModified: AWSDateTime!
-  version: Int!
+  updatedAt: AWSDateTime!
   syncState: String!
-  conflictId: String
   deleted: Boolean
   deletedAt: AWSDateTime
-  contentHash: String
   
   # Relationship: One document has many file attachments
   fileAttachments: [FileAttachment] @hasMany(indexName: "byDocumentSyncId", fields: ["syncId"])

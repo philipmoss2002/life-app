@@ -8,14 +8,16 @@ void main() {
     test('create factory generates valid document with UUID', () {
       final doc = Document.create(
         title: 'Test Document',
-        description: 'Test description',
-        labels: ['label1', 'label2'],
+        category: DocumentCategory.expenses,
+        date: DateTime(2024, 12, 31),
+        notes: 'Test Notes',
       );
 
       expect(doc.syncId, isNotEmpty);
       expect(doc.title, equals('Test Document'));
-      expect(doc.description, equals('Test description'));
-      expect(doc.labels, equals(['label1', 'label2']));
+      expect(doc.category, equals(DocumentCategory.expenses));
+      expect(doc.date, equals(DateTime(2024, 12, 31)));
+      expect(doc.notes, equals('Test Notes'));
       expect(doc.syncState, equals(SyncState.pendingUpload));
       expect(doc.files, isEmpty);
       expect(doc.createdAt, isNotNull);
@@ -23,33 +25,56 @@ void main() {
     });
 
     test('create factory with minimal fields', () {
-      final doc = Document.create(title: 'Minimal Doc');
+      final doc = Document.create(
+        title: 'Minimal Doc',
+        category: DocumentCategory.other,
+      );
 
       expect(doc.syncId, isNotEmpty);
       expect(doc.title, equals('Minimal Doc'));
-      expect(doc.description, isNull);
-      expect(doc.labels, isEmpty);
+      expect(doc.category, equals(DocumentCategory.other));
+      expect(doc.date, isNull);
+      expect(doc.notes, isNull);
       expect(doc.syncState, equals(SyncState.pendingUpload));
     });
 
     test('copyWith creates new instance with updated fields', () {
-      final original = Document.create(title: 'Original');
+      final original = Document.create(
+        title: 'Original',
+        category: DocumentCategory.carInsurance,
+      );
       final updated = original.copyWith(
         title: 'Updated',
+        category: DocumentCategory.homeInsurance,
+        date: DateTime(2025, 6, 15),
         syncState: SyncState.synced,
       );
 
       expect(updated.title, equals('Updated'));
+      expect(updated.category, equals(DocumentCategory.homeInsurance));
+      expect(updated.date, equals(DateTime(2025, 6, 15)));
       expect(updated.syncState, equals(SyncState.synced));
       expect(updated.syncId, equals(original.syncId));
       expect(updated.createdAt, equals(original.createdAt));
     });
 
+    test('copyWith can clear date field', () {
+      final original = Document.create(
+        title: 'Test',
+        category: DocumentCategory.holiday,
+        date: DateTime(2024, 12, 31),
+      );
+      final updated = original.copyWith(clearDate: true);
+
+      expect(updated.date, isNull);
+    });
+
     test('toJson and fromJson round trip', () {
       final original = Document.create(
         title: 'Test',
-        description: 'Description',
-        labels: ['a', 'b'],
+        category: DocumentCategory.carInsurance,
+        date: DateTime(2024, 12, 31),
+        notes: 'Notes',
       );
 
       final json = original.toJson();
@@ -57,16 +82,18 @@ void main() {
 
       expect(restored.syncId, equals(original.syncId));
       expect(restored.title, equals(original.title));
-      expect(restored.description, equals(original.description));
-      expect(restored.labels, equals(original.labels));
+      expect(restored.category, equals(original.category));
+      expect(restored.date, equals(original.date));
+      expect(restored.notes, equals(original.notes));
       expect(restored.syncState, equals(original.syncState));
     });
 
     test('toDatabase and fromDatabase round trip', () {
       final original = Document.create(
         title: 'Test',
-        description: 'Description',
-        labels: ['a', 'b'],
+        category: DocumentCategory.homeInsurance,
+        date: DateTime(2025, 3, 15),
+        notes: 'Notes',
       );
 
       final dbMap = original.toDatabase();
@@ -74,8 +101,9 @@ void main() {
 
       expect(restored.syncId, equals(original.syncId));
       expect(restored.title, equals(original.title));
-      expect(restored.description, equals(original.description));
-      expect(restored.labels, equals(original.labels));
+      expect(restored.category, equals(original.category));
+      expect(restored.date, equals(original.date));
+      expect(restored.notes, equals(original.notes));
       expect(restored.syncState, equals(original.syncState));
       expect(restored.files, isEmpty); // Files not included in database map
     });
@@ -84,6 +112,7 @@ void main() {
       final doc = Document(
         syncId: '',
         title: 'Test',
+        category: DocumentCategory.other,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         syncState: SyncState.pendingUpload,
@@ -96,6 +125,7 @@ void main() {
       final doc = Document(
         syncId: 'valid-uuid-format-here',
         title: '',
+        category: DocumentCategory.other,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         syncState: SyncState.pendingUpload,
@@ -108,6 +138,7 @@ void main() {
       final doc = Document(
         syncId: 'not-a-valid-uuid',
         title: 'Test',
+        category: DocumentCategory.other,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         syncState: SyncState.pendingUpload,
@@ -117,51 +148,73 @@ void main() {
     });
 
     test('validate succeeds with valid document', () {
-      final doc = Document.create(title: 'Valid Document');
+      final doc = Document.create(
+        title: 'Valid Document',
+        category: DocumentCategory.expenses,
+      );
 
       expect(() => doc.validate(), returnsNormally);
     });
 
     test('equality operator works correctly', () {
-      final doc1 = Document.create(title: 'Test');
+      final doc1 = Document.create(
+        title: 'Test',
+        category: DocumentCategory.other,
+      );
       final doc2 = doc1.copyWith();
-      final doc3 = Document.create(title: 'Different');
+      final doc3 = Document.create(
+        title: 'Different',
+        category: DocumentCategory.holiday,
+      );
 
       expect(doc1, equals(doc2));
       expect(doc1, isNot(equals(doc3)));
     });
 
     test('hashCode is consistent', () {
-      final doc1 = Document.create(title: 'Test');
+      final doc1 = Document.create(
+        title: 'Test',
+        category: DocumentCategory.other,
+      );
       final doc2 = doc1.copyWith();
 
       expect(doc1.hashCode, equals(doc2.hashCode));
     });
 
     test('toString provides useful information', () {
-      final doc = Document.create(title: 'Test Document');
+      final doc = Document.create(
+        title: 'Test Document',
+        category: DocumentCategory.carInsurance,
+      );
       final str = doc.toString();
 
       expect(str, contains('Document'));
       expect(str, contains(doc.syncId));
       expect(str, contains('Test Document'));
+      expect(str, contains('Car Insurance'));
       expect(str, contains('pendingUpload'));
     });
 
-    test('handles null description correctly', () {
-      final doc = Document.create(title: 'Test');
+    test('handles null notes correctly', () {
+      final doc = Document.create(
+        title: 'Test',
+        category: DocumentCategory.other,
+      );
       final json = doc.toJson();
       final restored = Document.fromJson(json);
 
-      expect(restored.description, isNull);
+      expect(restored.notes, isNull);
     });
 
-    test('handles empty labels list correctly', () {
-      final doc = Document.create(title: 'Test', labels: []);
+    test('handles null date correctly', () {
+      final doc = Document.create(
+        title: 'Test',
+        category: DocumentCategory.other,
+      );
       final json = doc.toJson();
       final restored = Document.fromJson(json);
 
-      expect(restored.labels, isEmpty);
+      expect(restored.date, isNull);
     });
 
     test('preserves file attachments in JSON round trip', () {
@@ -173,12 +226,33 @@ void main() {
         addedAt: DateTime.now(),
       );
 
-      final doc = Document.create(title: 'Test').copyWith(files: [file]);
+      final doc = Document.create(
+        title: 'Test',
+        category: DocumentCategory.expenses,
+      ).copyWith(files: [file]);
       final json = doc.toJson();
       final restored = Document.fromJson(json);
 
       expect(restored.files.length, equals(1));
       expect(restored.files.first.fileName, equals('test.pdf'));
+    });
+
+    test('category date labels are correct', () {
+      expect(DocumentCategory.carInsurance.dateLabel, equals('Renewal Date'));
+      expect(DocumentCategory.homeInsurance.dateLabel, equals('Renewal Date'));
+      expect(DocumentCategory.holiday.dateLabel, equals('Payment Due'));
+      expect(DocumentCategory.expenses.dateLabel, equals('Date'));
+      expect(DocumentCategory.other.dateLabel, equals('Date'));
+    });
+
+    test('category display names are correct', () {
+      expect(
+          DocumentCategory.carInsurance.displayName, equals('Car Insurance'));
+      expect(
+          DocumentCategory.homeInsurance.displayName, equals('Home Insurance'));
+      expect(DocumentCategory.holiday.displayName, equals('Holiday'));
+      expect(DocumentCategory.expenses.displayName, equals('Expenses'));
+      expect(DocumentCategory.other.displayName, equals('Other'));
     });
   });
 }

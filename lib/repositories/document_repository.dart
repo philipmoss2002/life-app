@@ -25,14 +25,16 @@ class DocumentRepository {
   /// Create a new document with generated syncId
   Future<Document> createDocument({
     required String title,
-    String? description,
-    List<String>? labels,
+    required DocumentCategory category,
+    DateTime? date,
+    String? notes,
   }) async {
     try {
       final document = Document.create(
         title: title,
-        description: description,
-        labels: labels ?? [],
+        category: category,
+        date: date,
+        notes: notes,
       );
 
       final db = await _dbService.database;
@@ -41,6 +43,16 @@ class DocumentRepository {
       return document;
     } catch (e) {
       throw DatabaseException('Failed to create document: $e');
+    }
+  }
+
+  /// Insert a document from remote sync (with existing syncId and timestamps)
+  Future<void> insertRemoteDocument(Document document) async {
+    try {
+      final db = await _dbService.database;
+      await db.insert('documents', document.toDatabase());
+    } catch (e) {
+      throw DatabaseException('Failed to insert remote document: $e');
     }
   }
 
@@ -153,6 +165,7 @@ class DocumentRepository {
     String? localPath,
     String? s3Key,
     int? fileSize,
+    String? label,
   }) async {
     try {
       final db = await _dbService.database;
@@ -165,6 +178,7 @@ class DocumentRepository {
 
       final fileAttachment = FileAttachment(
         fileName: fileName,
+        label: label,
         localPath: localPath,
         s3Key: s3Key,
         fileSize: fileSize,
@@ -174,6 +188,7 @@ class DocumentRepository {
       await db.insert('file_attachments', {
         'sync_id': syncId,
         'file_name': fileAttachment.fileName,
+        'label': fileAttachment.label,
         'local_path': fileAttachment.localPath,
         's3_key': fileAttachment.s3Key,
         'file_size': fileAttachment.fileSize,
@@ -236,6 +251,33 @@ class DocumentRepository {
     } catch (e) {
       if (e is DatabaseException) rethrow;
       throw DatabaseException('Failed to update file local path: $e');
+    }
+  }
+
+  /// Update the label for a file attachment
+  Future<void> updateFileLabel({
+    required String syncId,
+    required String fileName,
+    required String? label,
+  }) async {
+    try {
+      final db = await _dbService.database;
+
+      final count = await db.update(
+        'file_attachments',
+        {'label': label},
+        where: 'sync_id = ? AND file_name = ?',
+        whereArgs: [syncId, fileName],
+      );
+
+      if (count == 0) {
+        throw DatabaseException(
+          'File attachment not found: $fileName in document $syncId',
+        );
+      }
+    } catch (e) {
+      if (e is DatabaseException) rethrow;
+      throw DatabaseException('Failed to update file label: $e');
     }
   }
 

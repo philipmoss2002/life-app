@@ -2,23 +2,28 @@
 # This file should be placed in: amplify/backend/api/householdDocsAPI/schema.graphql
 # After running: amplify add api
 
+# Enum for document category
+enum DocumentCategory {
+  CAR_INSURANCE
+  HOME_INSURANCE
+  HOLIDAY
+  EXPENSES
+  OTHER
+}
+
 # Document model - represents a household document
 type Document @model @auth(rules: [{allow: owner, ownerField: "userId", identityClaim: "sub"}]) {
   syncId: String! @primaryKey
   userId: String! @index(name: "byUserId", sortKeyFields: ["createdAt"])
   title: String!
-  category: String!
-  filePaths: [String!]!
-  renewalDate: AWSDateTime
+  category: DocumentCategory!
+  date: AWSDateTime
   notes: String
   createdAt: AWSDateTime!
-  lastModified: AWSDateTime!
-  version: Int!
+  updatedAt: AWSDateTime!
   syncState: String!
-  conflictId: String
   deleted: Boolean
   deletedAt: AWSDateTime
-  contentHash: String
 }
 
 # FileAttachment model - represents files attached to documents
@@ -158,26 +163,37 @@ enum ConflictResolution {
 # Create Document:
 # mutation CreateDocument {
 #   createDocument(input: {
-#     title: "Car Insurance"
-#     category: "Insurance"
-#     renewalDate: "2024-12-31T00:00:00Z"
-#     version: 1
+#     syncId: "uuid-here"
+#     userId: "user-id"
+#     title: "Car Insurance Policy"
+#     category: CAR_INSURANCE
+#     date: "2024-12-31T00:00:00Z"
+#     notes: "Annual renewal"
+#     labels: ["insurance", "important"]
+#     syncState: "synced"
 #     deleted: false
 #   }) {
-#     id
+#     syncId
 #     title
+#     category
+#     date
 #     createdAt
 #   }
 # }
 #
-# List Documents:
-# query ListDocuments {
-#   listDocuments(filter: {deleted: {eq: false}}) {
+# List Documents by Category:
+# query ListDocumentsByCategory {
+#   listDocuments(filter: {
+#     category: {eq: CAR_INSURANCE}
+#     deleted: {ne: true}
+#   }) {
 #     items {
 #       syncId
 #       title
 #       category
-#       renewalDate
+#       date
+#       notes
+#       labels
 #       fileAttachments {
 #         items {
 #           fileName
@@ -190,10 +206,13 @@ enum ConflictResolution {
 #
 # Get Document with Files:
 # query GetDocument {
-#   getDocument(id: "document-id") {
-#     id
+#   getDocument(syncId: "document-sync-id") {
+#     syncId
 #     title
 #     category
+#     date
+#     notes
+#     labels
 #     fileAttachments {
 #       items {
 #         id
@@ -205,12 +224,29 @@ enum ConflictResolution {
 #   }
 # }
 #
-# Subscribe to Document Changes:
-# subscription OnCreateDocument {
-#   onCreateDocument {
-#     id
+# Update Document:
+# mutation UpdateDocument {
+#   updateDocument(input: {
+#     syncId: "document-sync-id"
+#     title: "Updated Title"
+#     category: HOME_INSURANCE
+#     date: "2025-06-15T00:00:00Z"
+#     notes: "Updated notes"
+#   }) {
+#     syncId
 #     title
 #     category
+#     updatedAt
+#   }
+# }
+#
+# Subscribe to Document Changes:
+# subscription OnCreateDocument {
+#   onCreateDocument(filter: {userId: {eq: "user-id"}}) {
+#     syncId
+#     title
+#     category
+#     date
 #   }
 # }
 

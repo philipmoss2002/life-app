@@ -5,6 +5,7 @@ import '../repositories/document_repository.dart';
 import 'authentication_service.dart';
 import 'connectivity_service.dart';
 import 'file_service.dart';
+import 'document_sync_service.dart';
 import 'log_service.dart' as log_svc;
 
 /// Custom exception for sync operations
@@ -34,6 +35,7 @@ class SyncService {
   final _fileService = FileService();
   final _authService = AuthenticationService();
   final _connectivityService = ConnectivityService();
+  final _documentSyncService = DocumentSyncService();
   final _logService = log_svc.LogService();
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
@@ -116,7 +118,22 @@ class SyncService {
 
       final identityPoolId = await _authService.getIdentityPoolId();
 
-      // Phase 1: Upload pending documents
+      // Phase 1: Pull remote document changes
+      try {
+        _logService.log(
+          'Phase 1: Pulling remote document changes',
+          level: log_svc.LogLevel.info,
+        );
+        await _documentSyncService.pullRemoteDocuments();
+      } catch (e) {
+        errors.add('Pull remote documents failed: $e');
+        _logService.log(
+          'Pull remote documents failed: $e',
+          level: log_svc.LogLevel.error,
+        );
+      }
+
+      // Phase 2: Upload pending documents
       try {
         final pendingDocs =
             await _documentRepository.getDocumentsNeedingUpload();
@@ -127,6 +144,10 @@ class SyncService {
 
         for (final doc in pendingDocs) {
           try {
+            // Push document metadata to DocumentDB
+            await _documentSyncService.pushDocumentToRemote(doc);
+
+            // Upload files to S3
             await uploadDocumentFiles(doc.syncId, identityPoolId);
             uploadedCount++;
           } catch (e) {
@@ -143,7 +164,7 @@ class SyncService {
             level: log_svc.LogLevel.error);
       }
 
-      // Phase 2: Download missing files
+      // Phase 3: Download missing files
       try {
         final downloadDocs =
             await _documentRepository.getDocumentsNeedingDownload();
@@ -215,8 +236,13 @@ class SyncService {
       // Determine what needs to be done
       if (doc.syncState == SyncState.pendingUpload ||
           doc.syncState == SyncState.error) {
+        // Push document metadata to DocumentDB
+        await _documentSyncService.pushDocumentToRemote(doc);
+
+        // Upload files to S3
         await uploadDocumentFiles(syncId, identityPoolId);
       } else if (doc.syncState == SyncState.pendingDownload) {
+        // Download files from S3
         await downloadDocumentFiles(syncId, identityPoolId);
       }
 

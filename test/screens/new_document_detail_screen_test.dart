@@ -24,7 +24,8 @@ void main() {
       final document = Document(
         syncId: 'test-123',
         title: 'Test Document',
-        description: 'Test description',
+        category: DocumentCategory.carInsurance,
+        notes: 'Test notes',
         labels: ['label1', 'label2'],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -47,7 +48,8 @@ void main() {
       final document = Document(
         syncId: 'test-123',
         title: 'Test Document',
-        description: null,
+        category: DocumentCategory.carInsurance,
+        notes: null,
         labels: [],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -92,7 +94,8 @@ void main() {
       final document = Document(
         syncId: 'test-123',
         title: 'Test Document',
-        description: 'Test description',
+        category: DocumentCategory.carInsurance,
+        notes: 'Test notes',
         labels: ['Work', 'Important'],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),

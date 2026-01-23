@@ -141,12 +141,24 @@ class AuthenticationService {
         return AuthState(isAuthenticated: false);
       }
 
-      final user = await Amplify.Auth.getCurrentUser();
+      final userAttributes = await Amplify.Auth.fetchUserAttributes();
       final identityPoolId = await getIdentityPoolId();
+
+      // Extract email from user attributes
+      String? userEmail;
+      try {
+        final emailAttribute = userAttributes.firstWhere(
+          (attr) => attr.userAttributeKey.key == 'email',
+        );
+        userEmail = emailAttribute.value;
+      } catch (e) {
+        // Email attribute not found
+        userEmail = null;
+      }
 
       return AuthState(
         isAuthenticated: true,
-        userEmail: user.username,
+        userEmail: userEmail,
         identityPoolId: identityPoolId,
         lastAuthTime: DateTime.now(),
       );

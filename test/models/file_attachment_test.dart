@@ -7,6 +7,7 @@ void main() {
       final now = DateTime.now();
       final file = FileAttachment(
         fileName: 'test.pdf',
+        label: 'Policy',
         localPath: '/path/to/file',
         s3Key: 's3://bucket/key',
         fileSize: 1024,
@@ -14,6 +15,7 @@ void main() {
       );
 
       expect(file.fileName, equals('test.pdf'));
+      expect(file.label, equals('Policy'));
       expect(file.localPath, equals('/path/to/file'));
       expect(file.s3Key, equals('s3://bucket/key'));
       expect(file.fileSize, equals(1024));
@@ -28,10 +30,30 @@ void main() {
       );
 
       expect(file.fileName, equals('test.pdf'));
+      expect(file.label, isNull);
       expect(file.localPath, isNull);
       expect(file.s3Key, isNull);
       expect(file.fileSize, isNull);
       expect(file.addedAt, equals(now));
+    });
+
+    test('displayName returns label when present', () {
+      final file = FileAttachment(
+        fileName: 'insurance-policy.pdf',
+        label: 'Policy',
+        addedAt: DateTime.now(),
+      );
+
+      expect(file.displayName, equals('Policy'));
+    });
+
+    test('displayName returns fileName when label is null', () {
+      final file = FileAttachment(
+        fileName: 'insurance-policy.pdf',
+        addedAt: DateTime.now(),
+      );
+
+      expect(file.displayName, equals('insurance-policy.pdf'));
     });
 
     test('copyWith creates new instance with updated fields', () {
@@ -42,15 +64,54 @@ void main() {
 
       final updated = original.copyWith(
         fileName: 'updated.pdf',
+        label: 'Updated Label',
         s3Key: 's3://new/key',
       );
 
       expect(updated.fileName, equals('updated.pdf'));
+      expect(updated.label, equals('Updated Label'));
       expect(updated.s3Key, equals('s3://new/key'));
       expect(updated.addedAt, equals(original.addedAt));
     });
 
-    test('toJson and fromJson round trip', () {
+    test('copyWith updates label correctly', () {
+      final original = FileAttachment(
+        fileName: 'test.pdf',
+        label: 'Original Label',
+        addedAt: DateTime.now(),
+      );
+
+      final updated = original.copyWith(label: 'New Label');
+
+      expect(updated.label, equals('New Label'));
+      expect(updated.fileName, equals(original.fileName));
+    });
+
+    test('toJson and fromJson round trip with label', () {
+      final original = FileAttachment(
+        fileName: 'test.pdf',
+        label: 'Policy Document',
+        localPath: '/path/to/file',
+        s3Key: 's3://bucket/key',
+        fileSize: 2048,
+        addedAt: DateTime.now(),
+      );
+
+      final json = original.toJson();
+      final restored = FileAttachment.fromJson(json);
+
+      expect(restored.fileName, equals(original.fileName));
+      expect(restored.label, equals(original.label));
+      expect(restored.localPath, equals(original.localPath));
+      expect(restored.s3Key, equals(original.s3Key));
+      expect(restored.fileSize, equals(original.fileSize));
+      expect(
+        restored.addedAt.millisecondsSinceEpoch,
+        equals(original.addedAt.millisecondsSinceEpoch),
+      );
+    });
+
+    test('toJson and fromJson round trip without label', () {
       final original = FileAttachment(
         fileName: 'test.pdf',
         localPath: '/path/to/file',
@@ -63,6 +124,7 @@ void main() {
       final restored = FileAttachment.fromJson(json);
 
       expect(restored.fileName, equals(original.fileName));
+      expect(restored.label, isNull);
       expect(restored.localPath, equals(original.localPath));
       expect(restored.s3Key, equals(original.s3Key));
       expect(restored.fileSize, equals(original.fileSize));
@@ -72,7 +134,31 @@ void main() {
       );
     });
 
-    test('toDatabase and fromDatabase round trip', () {
+    test('toDatabase and fromDatabase round trip with label', () {
+      final original = FileAttachment(
+        fileName: 'test.pdf',
+        label: 'Renewal Notice',
+        localPath: '/path/to/file',
+        s3Key: 's3://bucket/key',
+        fileSize: 2048,
+        addedAt: DateTime.now(),
+      );
+
+      final dbMap = original.toDatabase('test-sync-id');
+      final restored = FileAttachment.fromDatabase(dbMap);
+
+      expect(restored.fileName, equals(original.fileName));
+      expect(restored.label, equals(original.label));
+      expect(restored.localPath, equals(original.localPath));
+      expect(restored.s3Key, equals(original.s3Key));
+      expect(restored.fileSize, equals(original.fileSize));
+      expect(
+        restored.addedAt.millisecondsSinceEpoch,
+        equals(original.addedAt.millisecondsSinceEpoch),
+      );
+    });
+
+    test('toDatabase and fromDatabase round trip without label', () {
       final original = FileAttachment(
         fileName: 'test.pdf',
         localPath: '/path/to/file',
@@ -85,6 +171,7 @@ void main() {
       final restored = FileAttachment.fromDatabase(dbMap);
 
       expect(restored.fileName, equals(original.fileName));
+      expect(restored.label, isNull);
       expect(restored.localPath, equals(original.localPath));
       expect(restored.s3Key, equals(original.s3Key));
       expect(restored.fileSize, equals(original.fileSize));
@@ -166,11 +253,13 @@ void main() {
       final now = DateTime.now();
       final file1 = FileAttachment(
         fileName: 'test.pdf',
+        label: 'Policy',
         localPath: '/path',
         addedAt: now,
       );
       final file2 = FileAttachment(
         fileName: 'test.pdf',
+        label: 'Policy',
         localPath: '/path',
         addedAt: now,
       );
@@ -183,23 +272,42 @@ void main() {
       expect(file1, isNot(equals(file3)));
     });
 
-    test('hashCode is consistent', () {
+    test('equality operator considers label', () {
       final now = DateTime.now();
       final file1 = FileAttachment(
         fileName: 'test.pdf',
+        label: 'Policy',
         addedAt: now,
       );
       final file2 = FileAttachment(
         fileName: 'test.pdf',
+        label: 'Renewal',
+        addedAt: now,
+      );
+
+      expect(file1, isNot(equals(file2)));
+    });
+
+    test('hashCode is consistent', () {
+      final now = DateTime.now();
+      final file1 = FileAttachment(
+        fileName: 'test.pdf',
+        label: 'Policy',
+        addedAt: now,
+      );
+      final file2 = FileAttachment(
+        fileName: 'test.pdf',
+        label: 'Policy',
         addedAt: now,
       );
 
       expect(file1.hashCode, equals(file2.hashCode));
     });
 
-    test('toString provides useful information', () {
+    test('toString includes label', () {
       final file = FileAttachment(
         fileName: 'test.pdf',
+        label: 'Policy Document',
         localPath: '/path/to/file',
         s3Key: 's3://bucket/key',
         fileSize: 1024,
@@ -210,6 +318,7 @@ void main() {
 
       expect(str, contains('FileAttachment'));
       expect(str, contains('test.pdf'));
+      expect(str, contains('Policy Document'));
       expect(str, contains('/path/to/file'));
       expect(str, contains('s3://bucket/key'));
       expect(str, contains('1024'));

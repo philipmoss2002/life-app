@@ -43,7 +43,7 @@ void main() {
 
       expect(columnNames, contains('sync_id'));
       expect(columnNames, contains('title'));
-      expect(columnNames, contains('description'));
+      expect(columnNames, contains('notes'));
       expect(columnNames, contains('labels'));
       expect(columnNames, contains('created_at'));
       expect(columnNames, contains('updated_at'));

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_file/open_file.dart';
 import '../models/new_document.dart';
 import '../models/file_attachment.dart';
 import '../models/sync_state.dart';
@@ -7,6 +8,8 @@ import '../repositories/document_repository.dart';
 import '../services/sync_service.dart';
 import '../services/authentication_service.dart';
 import '../services/file_service.dart';
+import '../services/log_service.dart' as log_svc;
+import '../widgets/file_thumbnail_widget.dart';
 
 /// Document detail screen for viewing and editing documents
 class NewDocumentDetailScreen extends StatefulWidget {
@@ -25,11 +28,13 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
   final _syncService = SyncService();
   final _authService = AuthenticationService();
   final _fileService = FileService();
+  final _logService = log_svc.LogService();
 
   late TextEditingController _titleController;
-  late TextEditingController _descriptionController;
-  late List<String> _labels;
+  late DocumentCategory _selectedCategory;
+  DateTime? _selectedDate;
   late List<FileAttachment> _files;
+  late TextEditingController _notesController;
   bool _isEditing = false;
   bool _isSaving = false;
   bool _isDeleting = false;
@@ -40,17 +45,39 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     _isEditing = widget.document == null; // Edit mode if creating new
     _titleController =
         TextEditingController(text: widget.document?.title ?? '');
-    _descriptionController =
-        TextEditingController(text: widget.document?.description ?? '');
-    _labels = List.from(widget.document?.labels ?? []);
+    _selectedCategory = widget.document?.category ?? DocumentCategory.other;
+    _selectedDate = widget.document?.date;
     _files = List.from(widget.document?.files ?? []);
+    _notesController =
+        TextEditingController(text: widget.document?.notes ?? '');
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _descriptionController.dispose();
+    _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (date != null) {
+      setState(() {
+        _selectedDate = date;
+      });
+    }
+  }
+
+  void _clearDate() {
+    setState(() {
+      _selectedDate = null;
+    });
   }
 
   Future<void> _pickFiles() async {
@@ -60,20 +87,63 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     );
 
     if (result != null) {
-      setState(() {
-        for (final file in result.files) {
-          if (file.path != null) {
+      for (final file in result.files) {
+        if (file.path != null) {
+          // Prompt for label
+          final label = await _showAddLabelDialog(file.name);
+
+          setState(() {
             _files.add(FileAttachment(
               fileName: file.name,
+              label: label?.isEmpty == true ? null : label,
               localPath: file.path,
               s3Key: null,
               fileSize: file.size,
               addedAt: DateTime.now(),
             ));
-          }
+          });
         }
-      });
+      }
     }
+  }
+
+  Future<String?> _showAddLabelDialog(String fileName) async {
+    final controller = TextEditingController();
+
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Label for file'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('File: $fileName'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Label (optional)',
+                hintText: 'e.g., Policy, Renewal, Receipt',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.words,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Skip'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _removeFile(int index) {
@@ -82,45 +152,51 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     });
   }
 
-  Future<void> _addLabel() async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
+  Future<void> _editFileLabel(FileAttachment file) async {
+    final controller = TextEditingController(text: file.label ?? '');
+
+    final newLabel = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add Label'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Label',
-            hintText: 'Enter label name',
-          ),
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
+        title: const Text('Edit label'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('File: ${file.fileName}'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Label',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.words,
+              autofocus: true,
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(context, ''),
+            child: const Text('Clear'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Add'),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
 
-    if (result != null && result.isNotEmpty && !_labels.contains(result)) {
+    if (newLabel != null) {
       setState(() {
-        _labels.add(result);
+        final index = _files.indexOf(file);
+        _files[index] = file.copyWith(
+          label: newLabel.isEmpty ? null : newLabel,
+        );
       });
     }
-  }
-
-  void _removeLabel(int index) {
-    setState(() {
-      _labels.removeAt(index);
-    });
   }
 
   Future<void> _saveDocument() async {
@@ -133,56 +209,92 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     });
 
     try {
-      final Document doc;
+      // Store the saved document with correct syncId
+      Document savedDoc;
 
       if (widget.document == null) {
-        // Create new document
-        doc = Document.create(
+        // Create new document - USE THE RETURNED DOCUMENT
+        savedDoc = await _documentRepository.createDocument(
           title: _titleController.text.trim(),
-          description: _descriptionController.text.trim().isEmpty
+          category: _selectedCategory,
+          date: _selectedDate,
+          notes: _notesController.text.trim().isEmpty
               ? null
-              : _descriptionController.text.trim(),
-          labels: _labels,
+              : _notesController.text.trim(),
         );
       } else {
         // Update existing document
-        doc = widget.document!.copyWith(
+        final doc = widget.document!.copyWith(
           title: _titleController.text.trim(),
-          description: _descriptionController.text.trim().isEmpty
+          category: _selectedCategory,
+          date: _selectedDate,
+          clearDate: _selectedDate == null && widget.document!.date != null,
+          notes: _notesController.text.trim().isEmpty
               ? null
-              : _descriptionController.text.trim(),
-          labels: _labels,
+              : _notesController.text.trim(),
           updatedAt: DateTime.now(),
           files: _files,
         );
-      }
 
-      // Save to repository
-      if (widget.document == null) {
-        await _documentRepository.createDocument(
-          title: doc.title,
-          description: doc.description,
-          labels: doc.labels,
-        );
-      } else {
         await _documentRepository.updateDocument(doc);
+        savedDoc = doc;
       }
 
-      // Add file attachments
-      for (final file in _files) {
-        if (file.localPath != null && file.s3Key == null) {
-          await _documentRepository.addFileAttachment(
-            syncId: doc.syncId,
-            fileName: file.fileName,
-            localPath: file.localPath!,
-            s3Key: null,
-            fileSize: file.fileSize,
+      // Add file attachments using CORRECT syncId from saved document
+      // Handle file changes: additions, updates, and deletions
+      final originalFileNames =
+          widget.document?.files.map((f) => f.fileName).toSet() ?? {};
+      final currentFileNames = _files.map((f) => f.fileName).toSet();
+
+      // Create a map of original files for label comparison
+      final originalFilesMap = widget.document != null
+          ? {for (var f in widget.document!.files) f.fileName: f}
+          : <String, FileAttachment>{};
+
+      // Handle deletions - files that were in original but not in current
+      for (final originalFileName in originalFileNames) {
+        if (!currentFileNames.contains(originalFileName)) {
+          await _documentRepository.deleteFileAttachment(
+            syncId: savedDoc.syncId,
+            fileName: originalFileName,
           );
         }
       }
 
-      // Trigger sync
-      await _syncService.syncDocument(doc.syncId);
+      // Handle additions and updates
+      for (final file in _files) {
+        if (originalFileNames.contains(file.fileName)) {
+          // Existing file - check if label changed
+          final originalFile = originalFilesMap[file.fileName];
+          if (originalFile != null && originalFile.label != file.label) {
+            await _documentRepository.updateFileLabel(
+              syncId: savedDoc.syncId,
+              fileName: file.fileName,
+              label: file.label,
+            );
+          }
+        } else {
+          // New file - insert it
+          if (file.localPath != null && file.s3Key == null) {
+            await _documentRepository.addFileAttachment(
+              syncId: savedDoc.syncId,
+              fileName: file.fileName,
+              localPath: file.localPath!,
+              s3Key: null,
+              fileSize: file.fileSize,
+              label: file.label,
+            );
+          }
+        }
+      }
+
+      // Trigger sync with CORRECT syncId (catch exceptions to not fail save)
+      try {
+        await _syncService.syncDocument(savedDoc.syncId);
+      } catch (e) {
+        // Log but don't fail the save operation - sync will retry later
+        debugPrint('Sync failed (will retry later): $e');
+      }
 
       if (mounted) {
         setState(() {
@@ -331,9 +443,9 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                       setState(() {
                         _isEditing = false;
                         _titleController.text = widget.document!.title;
-                        _descriptionController.text =
-                            widget.document!.description ?? '';
-                        _labels = List.from(widget.document!.labels);
+                        _selectedCategory = widget.document!.category;
+                        _selectedDate = widget.document!.date;
+                        _notesController.text = widget.document!.notes ?? '';
                         _files = List.from(widget.document!.files);
                       });
                     },
@@ -365,21 +477,75 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                       textCapitalization: TextCapitalization.sentences,
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _descriptionController,
+                    DropdownButtonFormField<DocumentCategory>(
+                      value: _selectedCategory,
                       decoration: const InputDecoration(
-                        labelText: 'Description (optional)',
+                        labelText: 'Category',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.description),
+                        prefixIcon: Icon(Icons.category),
+                      ),
+                      items: DocumentCategory.values.map((category) {
+                        return DropdownMenuItem(
+                          value: category,
+                          child: Text(category.displayName),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedCategory = value;
+                          });
+                        }
+                      },
+                      validator: (value) {
+                        if (value == null) {
+                          return 'Please select a category';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: _pickDate,
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText:
+                              '${_selectedCategory.dateLabel} (optional)',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.calendar_today),
+                          suffixIcon: _selectedDate != null
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: _clearDate,
+                                )
+                              : null,
+                        ),
+                        child: Text(
+                          _selectedDate != null
+                              ? _formatDateOnly(_selectedDate!)
+                              : 'Tap to select date',
+                          style: TextStyle(
+                            color: _selectedDate != null
+                                ? Theme.of(context).textTheme.bodyLarge?.color
+                                : Theme.of(context).hintColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildFilesSection(),
+                    const SizedBox(height: 24),
+                    TextFormField(
+                      controller: _notesController,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (optional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.notes),
                       ),
                       maxLines: 3,
                       textCapitalization: TextCapitalization.sentences,
                     ),
                     const SizedBox(height: 16),
-                    _buildLabelsSection(),
-                    const SizedBox(height: 16),
-                    _buildFilesSection(),
-                    const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: _isSaving ? null : _saveDocument,
                       style: ElevatedButton.styleFrom(
@@ -397,11 +563,16 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                     ),
                   ] else ...[
                     _buildInfoCard('Title', widget.document!.title),
-                    if (widget.document!.description != null &&
-                        widget.document!.description!.isNotEmpty)
+                    _buildInfoCard(
+                        'Category', widget.document!.category.displayName),
+                    if (widget.document!.date != null)
                       _buildInfoCard(
-                          'Description', widget.document!.description!),
-                    if (widget.document!.labels.isNotEmpty) _buildLabelsCard(),
+                        widget.document!.category.dateLabel,
+                        _formatDateOnly(widget.document!.date!),
+                      ),
+                    if (widget.document!.notes != null &&
+                        widget.document!.notes!.isNotEmpty)
+                      _buildInfoCard('Notes', widget.document!.notes!),
                     if (widget.document!.files.isNotEmpty) _buildFilesCard(),
                     _buildInfoCard(
                       'Created',
@@ -416,56 +587,6 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildLabelsSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Labels',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _addLabel,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add'),
-                ),
-              ],
-            ),
-            if (_labels.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'No labels added',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _labels.asMap().entries.map((entry) {
-                  return Chip(
-                    label: Text(entry.value),
-                    onDeleted: () => _removeLabel(entry.key),
-                    deleteIcon: const Icon(Icons.close, size: 18),
-                  );
-                }).toList(),
-              ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -506,17 +627,31 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                 final file = entry.value;
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    _getFileIcon(file.fileName),
-                    color: Theme.of(context).colorScheme.primary,
+                  leading: FileThumbnailWidget(
+                    file: file,
+                    size: 56,
                   ),
-                  title: Text(file.fileName),
+                  title: Text(
+                    file.displayName, // Shows label if present, otherwise fileName
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
                   subtitle: file.fileSize != null
                       ? Text(_formatFileSize(file.fileSize!))
                       : null,
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => _removeFile(entry.key),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _editFileLabel(file),
+                        tooltip: 'Edit label',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => _removeFile(entry.key),
+                        tooltip: 'Remove file',
+                      ),
+                    ],
                   ),
                 );
               }),
@@ -553,39 +688,6 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     );
   }
 
-  Widget _buildLabelsCard() {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Labels',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: widget.document!.labels.map((label) {
-                return Chip(
-                  label: Text(label),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildFilesCard() {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -606,11 +708,14 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
             ...widget.document!.files.map((file) {
               return ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  _getFileIcon(file.fileName),
-                  color: Theme.of(context).colorScheme.primary,
+                leading: FileThumbnailWidget(
+                  file: file,
+                  size: 56,
                 ),
-                title: Text(file.fileName),
+                title: Text(
+                  file.displayName, // Shows label if present, otherwise fileName
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
                 subtitle: file.fileSize != null
                     ? Text(_formatFileSize(file.fileSize!))
                     : null,
@@ -705,32 +810,6 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     );
   }
 
-  IconData _getFileIcon(String fileName) {
-    final extension = fileName.toLowerCase().split('.').last;
-    switch (extension) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'doc':
-      case 'docx':
-        return Icons.description;
-      case 'xls':
-      case 'xlsx':
-        return Icons.table_chart;
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-        return Icons.image;
-      case 'txt':
-        return Icons.text_snippet;
-      case 'zip':
-      case 'rar':
-        return Icons.folder_zip;
-      default:
-        return Icons.insert_drive_file;
-    }
-  }
-
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -744,12 +823,34 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
+  String _formatDateOnly(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
   Future<void> _openFile(String filePath) async {
-    // TODO: Implement file opening
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Opening file: ${filePath.split('/').last}'),
-      ),
-    );
+    try {
+      final result = await OpenFile.open(filePath);
+
+      if (result.type != ResultType.done) {
+        // Show error if file couldn't be opened
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not open file: ${result.message}'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening file: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

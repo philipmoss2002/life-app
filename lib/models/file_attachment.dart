@@ -3,6 +3,7 @@
 /// Represents a file attached to a document.
 class FileAttachment {
   final String fileName;
+  final String? label;
   final String? localPath;
   final String? s3Key;
   final int? fileSize;
@@ -10,15 +11,20 @@ class FileAttachment {
 
   FileAttachment({
     required this.fileName,
+    this.label,
     this.localPath,
     this.s3Key,
     this.fileSize,
     required this.addedAt,
   });
 
+  /// Display name: returns label if present, otherwise fileName
+  String get displayName => label ?? fileName;
+
   /// Create a copy with updated fields
   FileAttachment copyWith({
     String? fileName,
+    String? label,
     String? localPath,
     String? s3Key,
     int? fileSize,
@@ -26,6 +32,7 @@ class FileAttachment {
   }) {
     return FileAttachment(
       fileName: fileName ?? this.fileName,
+      label: label ?? this.label,
       localPath: localPath ?? this.localPath,
       s3Key: s3Key ?? this.s3Key,
       fileSize: fileSize ?? this.fileSize,
@@ -37,6 +44,7 @@ class FileAttachment {
   Map<String, dynamic> toJson() {
     return {
       'fileName': fileName,
+      'label': label,
       'localPath': localPath,
       's3Key': s3Key,
       'fileSize': fileSize,
@@ -48,6 +56,7 @@ class FileAttachment {
   factory FileAttachment.fromJson(Map<String, dynamic> json) {
     return FileAttachment(
       fileName: json['fileName'] as String,
+      label: json['label'] as String?,
       localPath: json['localPath'] as String?,
       s3Key: json['s3Key'] as String?,
       fileSize: json['fileSize'] as int?,
@@ -60,6 +69,7 @@ class FileAttachment {
     return {
       'sync_id': syncId,
       'file_name': fileName,
+      'label': label,
       'local_path': localPath,
       's3_key': s3Key,
       'file_size': fileSize,
@@ -71,6 +81,7 @@ class FileAttachment {
   factory FileAttachment.fromDatabase(Map<String, dynamic> map) {
     return FileAttachment(
       fileName: map['file_name'] as String,
+      label: map['label'] as String?,
       localPath: map['local_path'] as String?,
       s3Key: map['s3_key'] as String?,
       fileSize: map['file_size'] as int?,
@@ -98,6 +109,7 @@ class FileAttachment {
 
     return other is FileAttachment &&
         other.fileName == fileName &&
+        other.label == label &&
         other.localPath == localPath &&
         other.s3Key == s3Key &&
         other.fileSize == fileSize &&
@@ -107,6 +119,7 @@ class FileAttachment {
   @override
   int get hashCode {
     return fileName.hashCode ^
+        label.hashCode ^
         localPath.hashCode ^
         s3Key.hashCode ^
         fileSize.hashCode ^
@@ -115,6 +128,6 @@ class FileAttachment {
 
   @override
   String toString() {
-    return 'FileAttachment(fileName: $fileName, localPath: $localPath, s3Key: $s3Key, fileSize: $fileSize)';
+    return 'FileAttachment(fileName: $fileName, label: $label, localPath: $localPath, s3Key: $s3Key, fileSize: $fileSize)';
   }
 }

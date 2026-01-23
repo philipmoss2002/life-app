@@ -364,7 +364,7 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-            Icons.description,
+            _getCategoryIcon(doc.category),
             color: Theme.of(context).colorScheme.primary,
           ),
         ),
@@ -372,29 +372,11 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (doc.description != null && doc.description!.isNotEmpty)
+            if (doc.notes != null && doc.notes!.isNotEmpty)
               Text(
-                doc.description!,
+                doc.notes!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-              ),
-            if (doc.labels.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Wrap(
-                  spacing: 4,
-                  children: doc.labels.take(3).map((label) {
-                    return Chip(
-                      label: Text(
-                        label,
-                        style: const TextStyle(fontSize: 10),
-                      ),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    );
-                  }).toList(),
-                ),
               ),
           ],
         ),
@@ -461,6 +443,22 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
       message: tooltip,
       child: Icon(icon, size: 20, color: color),
     );
+  }
+
+  /// Get icon based on document category
+  IconData _getCategoryIcon(DocumentCategory category) {
+    switch (category) {
+      case DocumentCategory.homeInsurance:
+        return Icons.home;
+      case DocumentCategory.carInsurance:
+        return Icons.directions_car;
+      case DocumentCategory.holiday:
+        return Icons.flight;
+      case DocumentCategory.expenses:
+        return Icons.receipt;
+      case DocumentCategory.other:
+        return Icons.description;
+    }
   }
 
   void _handleDocumentTap(Document doc) {

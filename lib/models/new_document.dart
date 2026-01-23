@@ -1,7 +1,32 @@
-import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'file_attachment.dart';
 import 'sync_state.dart';
+
+/// Document category enum
+enum DocumentCategory {
+  carInsurance('Car Insurance'),
+  homeInsurance('Home Insurance'),
+  holiday('Holiday'),
+  expenses('Expenses'),
+  other('Other');
+
+  final String displayName;
+  const DocumentCategory(this.displayName);
+
+  /// Get date field label based on category
+  String get dateLabel {
+    switch (this) {
+      case DocumentCategory.carInsurance:
+      case DocumentCategory.homeInsurance:
+        return 'Renewal Date';
+      case DocumentCategory.holiday:
+        return 'Payment Due';
+      case DocumentCategory.expenses:
+      case DocumentCategory.other:
+        return 'Date';
+    }
+  }
+}
 
 /// Document model for authentication and sync rewrite
 ///
@@ -10,8 +35,9 @@ import 'sync_state.dart';
 class Document {
   final String syncId;
   final String title;
-  final String? description;
-  final List<String> labels;
+  final DocumentCategory category;
+  final DateTime? date;
+  final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
   final SyncState syncState;
@@ -20,8 +46,9 @@ class Document {
   Document({
     required this.syncId,
     required this.title,
-    this.description,
-    this.labels = const [],
+    required this.category,
+    this.date,
+    this.notes,
     required this.createdAt,
     required this.updatedAt,
     required this.syncState,
@@ -31,15 +58,17 @@ class Document {
   /// Create a new document with generated UUID
   factory Document.create({
     required String title,
-    String? description,
-    List<String>? labels,
+    required DocumentCategory category,
+    DateTime? date,
+    String? notes,
   }) {
     final now = DateTime.now();
     return Document(
       syncId: const Uuid().v4(),
       title: title,
-      description: description,
-      labels: labels ?? [],
+      category: category,
+      date: date,
+      notes: notes,
       createdAt: now,
       updatedAt: now,
       syncState: SyncState.pendingUpload,
@@ -51,8 +80,10 @@ class Document {
   Document copyWith({
     String? syncId,
     String? title,
-    String? description,
-    List<String>? labels,
+    DocumentCategory? category,
+    DateTime? date,
+    bool clearDate = false,
+    String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
     SyncState? syncState,
@@ -61,8 +92,9 @@ class Document {
     return Document(
       syncId: syncId ?? this.syncId,
       title: title ?? this.title,
-      description: description ?? this.description,
-      labels: labels ?? this.labels,
+      category: category ?? this.category,
+      date: clearDate ? null : (date ?? this.date),
+      notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       syncState: syncState ?? this.syncState,
@@ -75,8 +107,9 @@ class Document {
     return {
       'syncId': syncId,
       'title': title,
-      'description': description,
-      'labels': labels,
+      'category': category.name,
+      'date': date?.toIso8601String(),
+      'notes': notes,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'syncState': syncState.name,
@@ -89,11 +122,13 @@ class Document {
     return Document(
       syncId: json['syncId'] as String,
       title: json['title'] as String,
-      description: json['description'] as String?,
-      labels: (json['labels'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
+      category: DocumentCategory.values.firstWhere(
+        (e) => e.name == json['category'],
+        orElse: () => DocumentCategory.other,
+      ),
+      date:
+          json['date'] != null ? DateTime.parse(json['date'] as String) : null,
+      notes: json['notes'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       syncState: SyncState.values.firstWhere(
@@ -112,8 +147,9 @@ class Document {
     return {
       'sync_id': syncId,
       'title': title,
-      'description': description,
-      'labels': jsonEncode(labels),
+      'category': category.name,
+      'date': date?.millisecondsSinceEpoch,
+      'notes': notes,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
       'sync_state': syncState.name,
@@ -125,12 +161,14 @@ class Document {
     return Document(
       syncId: map['sync_id'] as String,
       title: map['title'] as String,
-      description: map['description'] as String?,
-      labels: map['labels'] != null
-          ? (jsonDecode(map['labels'] as String) as List<dynamic>)
-              .map((e) => e as String)
-              .toList()
-          : [],
+      category: DocumentCategory.values.firstWhere(
+        (e) => e.name == map['category'],
+        orElse: () => DocumentCategory.other,
+      ),
+      date: map['date'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['date'] as int)
+          : null,
+      notes: map['notes'] as String?,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
       syncState: SyncState.values.firstWhere(
@@ -167,8 +205,9 @@ class Document {
     return other is Document &&
         other.syncId == syncId &&
         other.title == title &&
-        other.description == description &&
-        _listEquals(other.labels, labels) &&
+        other.category == category &&
+        other.date == date &&
+        other.notes == notes &&
         other.createdAt == createdAt &&
         other.updatedAt == updatedAt &&
         other.syncState == syncState &&
@@ -179,8 +218,9 @@ class Document {
   int get hashCode {
     return syncId.hashCode ^
         title.hashCode ^
-        description.hashCode ^
-        labels.hashCode ^
+        category.hashCode ^
+        date.hashCode ^
+        notes.hashCode ^
         createdAt.hashCode ^
         updatedAt.hashCode ^
         syncState.hashCode ^
@@ -189,7 +229,7 @@ class Document {
 
   @override
   String toString() {
-    return 'Document(syncId: $syncId, title: $title, syncState: ${syncState.name}, files: ${files.length})';
+    return 'Document(syncId: $syncId, title: $title, category: ${category.displayName}, syncState: ${syncState.name}, files: ${files.length})';
   }
 
   /// Helper method to compare lists
