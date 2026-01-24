@@ -167,6 +167,34 @@ class AuthenticationService {
     }
   }
 
+  /// Get the Cognito User Pool user ID (sub claim)
+  ///
+  /// This is the user's unique identifier in the Cognito User Pool.
+  /// Used for AppSync authorization with @auth(identityClaim: "sub")
+  Future<String> getUserId() async {
+    try {
+      final session = await Amplify.Auth.fetchAuthSession();
+
+      if (!session.isSignedIn) {
+        throw AuthenticationException('User is not signed in');
+      }
+
+      // Get user attributes to extract sub
+      final attributes = await Amplify.Auth.fetchUserAttributes();
+      final subAttribute = attributes.firstWhere(
+        (attr) => attr.userAttributeKey == AuthUserAttributeKey.sub,
+        orElse: () => throw AuthenticationException('User sub claim not found'),
+      );
+
+      return subAttribute.value;
+    } on AuthException catch (e) {
+      throw AuthenticationException('Failed to get user ID: ${e.message}');
+    } catch (e) {
+      if (e is AuthenticationException) rethrow;
+      throw AuthenticationException('Failed to get user ID: $e');
+    }
+  }
+
   /// Get the persistent Identity Pool ID for the current user
   ///
   /// The Identity Pool ID is persistent and tied to the User Pool identity.

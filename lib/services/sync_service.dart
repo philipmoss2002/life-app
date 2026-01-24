@@ -6,6 +6,7 @@ import 'authentication_service.dart';
 import 'connectivity_service.dart';
 import 'file_service.dart';
 import 'document_sync_service.dart';
+import 'file_attachment_sync_service.dart';
 import 'log_service.dart' as log_svc;
 
 /// Custom exception for sync operations
@@ -36,6 +37,7 @@ class SyncService {
   final _authService = AuthenticationService();
   final _connectivityService = ConnectivityService();
   final _documentSyncService = DocumentSyncService();
+  final _fileAttachmentSyncService = FileAttachmentSyncService();
   final _logService = log_svc.LogService();
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
@@ -272,6 +274,9 @@ class SyncService {
         throw SyncException('Document not found: $syncId');
       }
 
+      // Get user ID for FileAttachment records
+      final userId = await _authService.getUserId();
+
       // Update state to uploading
       await _documentRepository.updateSyncState(syncId, SyncState.uploading);
 
@@ -290,11 +295,30 @@ class SyncService {
               identityPoolId: identityPoolId,
             );
 
-            // Update S3 key in database
+            // Update S3 key in local database
             await _documentRepository.updateFileS3Key(
               syncId: syncId,
               fileName: file.fileName,
               s3Key: s3Key,
+            );
+
+            // Create FileAttachment record in DynamoDB
+            // Generate a unique syncId for the file attachment
+            final fileAttachmentSyncId = '${syncId}_${file.fileName}';
+
+            await _fileAttachmentSyncService.createRemoteFileAttachment(
+              syncId: fileAttachmentSyncId,
+              documentSyncId: syncId,
+              userId: userId,
+              fileName: file.fileName,
+              label: file.label,
+              fileSize: file.fileSize ?? 0,
+              s3Key: s3Key,
+              filePath: s3Key,
+              addedAt: file.addedAt,
+              contentType: null, // Not tracked in local model
+              checksum: null, // Not tracked in local model
+              syncState: 'synced',
             );
 
             _logService.log(
@@ -408,6 +432,14 @@ class SyncService {
         _logService.log(
           'Triggered sync failed: $e',
           level: log_svc.LogLevel.error,
+        );
+        // Return a failed sync result
+        return SyncResult(
+          uploadedCount: 0,
+          downloadedCount: 0,
+          failedCount: 1,
+          errors: [e.toString()],
+          duration: Duration.zero,
         );
       });
     });

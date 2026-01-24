@@ -39,8 +39,8 @@ class DocumentSyncService {
         level: log_svc.LogLevel.info,
       );
 
-      // Get current user ID (using Identity Pool ID)
-      final userId = await _authService.getIdentityPoolId();
+      // Get current user ID (using Cognito User Pool sub claim)
+      final userId = await _authService.getUserId();
 
       // Check if document exists remotely
       final existingDoc = await _fetchRemoteDocument(localDoc.syncId);
@@ -276,8 +276,8 @@ class DocumentSyncService {
         level: log_svc.LogLevel.info,
       );
 
-      // Get current user ID
-      final userId = await _authService.getIdentityPoolId();
+      // Get current user ID (using Cognito User Pool sub claim)
+      final userId = await _authService.getUserId();
 
       // Fetch all documents for this user
       final remoteDocs = await _fetchAllRemoteDocuments(userId);
@@ -470,7 +470,7 @@ class DocumentSyncService {
         level: log_svc.LogLevel.info,
       );
 
-      final userId = await _authService.getIdentityPoolId();
+      final userId = await _authService.getUserId();
 
       // Fetch the document first
       final remoteDoc = await _fetchRemoteDocument(syncId);
