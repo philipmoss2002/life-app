@@ -4,6 +4,8 @@ import '../models/sync_state.dart';
 import '../repositories/document_repository.dart';
 import '../services/authentication_service.dart';
 import '../services/sync_service.dart';
+import '../services/subscription_status_notifier.dart';
+import '../services/subscription_service.dart';
 import 'sign_in_screen.dart';
 import 'new_settings_screen.dart';
 import 'new_document_detail_screen.dart';
@@ -20,6 +22,7 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
   final _documentRepository = DocumentRepository();
   final _authService = AuthenticationService();
   final _syncService = SyncService();
+  late final SubscriptionStatusNotifier _subscriptionNotifier;
 
   List<Document> _documents = [];
   bool _isLoading = true;
@@ -29,8 +32,34 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
   @override
   void initState() {
     super.initState();
+    _subscriptionNotifier = SubscriptionStatusNotifier(SubscriptionService());
+    _initializeSubscriptionNotifier();
     _checkAuthAndLoadDocuments();
     _listenToSyncStatus();
+  }
+
+  Future<void> _initializeSubscriptionNotifier() async {
+    try {
+      await _subscriptionNotifier.initialize();
+      _subscriptionNotifier.addListener(_onSubscriptionStatusChanged);
+    } catch (e) {
+      debugPrint('Failed to initialize subscription notifier: $e');
+    }
+  }
+
+  void _onSubscriptionStatusChanged() {
+    if (mounted) {
+      setState(() {
+        // Trigger rebuild when subscription status changes
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscriptionNotifier.removeListener(_onSubscriptionStatusChanged);
+    _subscriptionNotifier.dispose();
+    super.dispose();
   }
 
   Future<void> _checkAuthAndLoadDocuments() async {
@@ -378,6 +407,8 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+            const SizedBox(height: 4),
+            _buildSubscriptionBadge(),
           ],
         ),
         trailing: Row(
@@ -389,6 +420,48 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
           ],
         ),
         onTap: () => _handleDocumentTap(doc),
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionBadge() {
+    if (!_isAuthenticated) {
+      return const SizedBox.shrink();
+    }
+
+    final isCloudSyncEnabled = _subscriptionNotifier.isCloudSyncEnabled;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isCloudSyncEnabled
+            ? Colors.green.withValues(alpha: 0.1)
+            : Colors.grey.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCloudSyncEnabled
+              ? Colors.green.withValues(alpha: 0.3)
+              : Colors.grey.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isCloudSyncEnabled ? Icons.cloud_done : Icons.cloud_off,
+            size: 12,
+            color: isCloudSyncEnabled ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            isCloudSyncEnabled ? 'Cloud Synced' : 'Local Only',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: isCloudSyncEnabled ? Colors.green : Colors.grey,
+            ),
+          ),
+        ],
       ),
     );
   }

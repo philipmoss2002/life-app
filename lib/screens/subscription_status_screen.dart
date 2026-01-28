@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:amplify_flutter/amplify_flutter.dart' hide SubscriptionStatus;
 import '../services/subscription_service.dart';
+import '../services/subscription_status_notifier.dart';
+import '../services/sync_service.dart';
 
 /// Screen displaying current subscription status
 /// Shows expiration date and provides options to manage subscription
@@ -14,6 +17,7 @@ class SubscriptionStatusScreen extends StatefulWidget {
 
 class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
   final SubscriptionService _subscriptionService = SubscriptionService();
+  late final SubscriptionStatusNotifier _statusNotifier;
   SubscriptionStatus _status = SubscriptionStatus.none;
   bool _isLoading = true;
   bool _isRestoring = false;
@@ -21,7 +25,33 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
   @override
   void initState() {
     super.initState();
+    _statusNotifier = SubscriptionStatusNotifier(_subscriptionService);
+    _initializeNotifier();
     _loadSubscriptionStatus();
+  }
+
+  Future<void> _initializeNotifier() async {
+    try {
+      await _statusNotifier.initialize();
+      _statusNotifier.addListener(_onStatusChanged);
+    } catch (e) {
+      // Error already logged by notifier
+    }
+  }
+
+  void _onStatusChanged() {
+    if (mounted) {
+      setState(() {
+        _status = _statusNotifier.status;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _statusNotifier.removeListener(_onStatusChanged);
+    _statusNotifier.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSubscriptionStatus() async {
@@ -54,11 +84,11 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Cancel Subscription'),
+        title: const Text('Manage Subscription'),
         content: Text(
           Platform.isAndroid
-              ? 'To cancel your subscription, you need to manage it through Google Play Store. Would you like to be directed there?'
-              : 'To cancel your subscription, you need to manage it through the App Store. Would you like to be directed there?',
+              ? 'To manage your subscription, you need to use Google Play Store. Would you like to be directed there?'
+              : 'To manage your subscription, you need to use the App Store. Would you like to be directed there?',
         ),
         actions: [
           TextButton(
@@ -75,17 +105,27 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
 
     if (confirmed == true) {
       try {
-        await _subscriptionService.cancelSubscription();
+        final success = await _subscriptionService.openSubscriptionManagement();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                Platform.isAndroid
-                    ? 'Opening Google Play Store...'
-                    : 'Opening App Store...',
+          if (success) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  Platform.isAndroid
+                      ? 'Opening Google Play Store...'
+                      : 'Opening App Store...',
+                ),
               ),
-            ),
-          );
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                    'Unable to open store. Please manage your subscription through your device settings.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
       } catch (e) {
         if (mounted) {
@@ -106,18 +146,54 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
     });
 
     try {
-      await _subscriptionService.restorePurchases();
-      // Wait a moment for the purchase stream to process
-      await Future.delayed(const Duration(seconds: 2));
+      // Call enhanced restorePurchases that returns PurchaseResult
+      final result = await _subscriptionService.restorePurchases();
+
+      // Refresh the notifier to get latest status
+      await _statusNotifier.refresh();
       await _loadSubscriptionStatus();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Purchases restored successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (result.success) {
+          // Show success message based on status
+          String message;
+          if (result.status == SubscriptionStatus.active) {
+            message =
+                'Purchases restored successfully! Premium subscription is now active.';
+
+            // Trigger sync for pending documents if subscription was restored
+            try {
+              final syncService = SyncService();
+              await syncService.syncPendingDocuments();
+            } catch (e) {
+              safePrint('Error triggering sync after restoration: $e');
+            }
+          } else if (result.status == SubscriptionStatus.none) {
+            message =
+                'No active subscriptions found. Consider subscribing to enable cloud sync.';
+          } else {
+            message = 'Purchases restored successfully.';
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: result.status == SubscriptionStatus.active
+                  ? Colors.green
+                  : Colors.orange,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          // Show error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result.error ?? 'Failed to restore purchases'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -125,6 +201,7 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
           SnackBar(
             content: Text('Failed to restore purchases: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -170,6 +247,7 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
 
   Widget _buildStatusCard() {
     final statusInfo = _getStatusInfo();
+    final isCloudSyncEnabled = _statusNotifier.isCloudSyncEnabled;
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -183,7 +261,7 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: statusInfo.gradientColors.first.withOpacity(0.3),
+            color: statusInfo.gradientColors.first.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -214,12 +292,41 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
               color: Colors.white,
             ),
           ),
+          const SizedBox(height: 16),
+          // Cloud Sync Status Indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isCloudSyncEnabled ? Icons.cloud_done : Icons.cloud_off,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isCloudSyncEnabled
+                      ? 'Cloud Sync Enabled'
+                      : 'Cloud Sync Disabled',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (statusInfo.expirationText != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -279,6 +386,8 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
   }
 
   Widget _buildSubscriptionDetails() {
+    final isCloudSyncEnabled = _statusNotifier.isCloudSyncEnabled;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -295,6 +404,12 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
             icon: Icons.info_outline,
             title: 'Status',
             value: _getStatusText(),
+          ),
+          const SizedBox(height: 12),
+          _buildDetailCard(
+            icon: isCloudSyncEnabled ? Icons.cloud_done : Icons.cloud_off,
+            title: 'Cloud Sync',
+            value: isCloudSyncEnabled ? 'Enabled' : 'Disabled',
           ),
           const SizedBox(height: 12),
           _buildDetailCard(
@@ -366,8 +481,8 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
       case SubscriptionStatus.active:
         return _StatusInfo(
           icon: Icons.check_circle,
-          title: 'Active',
-          subtitle: 'Your premium subscription is active',
+          title: 'Premium Active',
+          subtitle: 'Your documents are syncing to the cloud',
           gradientColors: [Colors.green[600]!, Colors.green[400]!],
           expirationText: 'Renews ${_getExpirationDateText()}',
         );
@@ -375,23 +490,23 @@ class _SubscriptionStatusScreenState extends State<SubscriptionStatusScreen> {
         return _StatusInfo(
           icon: Icons.warning,
           title: 'Grace Period',
-          subtitle: 'Please update your payment method',
+          subtitle: 'Update payment to continue cloud sync',
           gradientColors: [Colors.orange[600]!, Colors.orange[400]!],
           expirationText: 'Expires ${_getExpirationDateText()}',
         );
       case SubscriptionStatus.expired:
         return _StatusInfo(
           icon: Icons.error_outline,
-          title: 'Expired',
-          subtitle: 'Your subscription has expired',
+          title: 'Subscription Expired',
+          subtitle: 'Renew to restore cloud sync',
           gradientColors: [Colors.red[600]!, Colors.red[400]!],
           expirationText: 'Expired ${_getExpirationDateText()}',
         );
       case SubscriptionStatus.none:
         return _StatusInfo(
           icon: Icons.cloud_off,
-          title: 'No Subscription',
-          subtitle: 'Subscribe to unlock premium features',
+          title: 'Local Storage Only',
+          subtitle: 'Subscribe to enable cloud backup and sync',
           gradientColors: [Colors.grey[600]!, Colors.grey[400]!],
         );
     }

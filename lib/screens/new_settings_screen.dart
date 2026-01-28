@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/authentication_service.dart';
+import '../services/subscription_service.dart';
+import '../services/subscription_status_notifier.dart';
 import '../models/auth_state.dart';
 import 'new_logs_viewer_screen.dart';
+import 'subscription_status_screen.dart';
 
 /// Clean settings screen without test features
 ///
@@ -20,27 +23,59 @@ class NewSettingsScreen extends StatefulWidget {
 
 class _NewSettingsScreenState extends State<NewSettingsScreen> {
   final _authService = AuthenticationService();
+  final _subscriptionService = SubscriptionService();
+  late final SubscriptionStatusNotifier _statusNotifier;
 
   AuthState? _authState;
   PackageInfo? _packageInfo;
+  SubscriptionStatus _subscriptionStatus = SubscriptionStatus.none;
   bool _isLoading = true;
   bool _isSigningOut = false;
 
   @override
   void initState() {
     super.initState();
+    _statusNotifier = SubscriptionStatusNotifier(_subscriptionService);
+    _initializeNotifier();
     _loadData();
+  }
+
+  Future<void> _initializeNotifier() async {
+    try {
+      await _statusNotifier.initialize();
+      _statusNotifier.addListener(_onSubscriptionStatusChanged);
+    } catch (e) {
+      // Error already logged by notifier
+    }
+  }
+
+  void _onSubscriptionStatusChanged() {
+    if (mounted) {
+      setState(() {
+        _subscriptionStatus = _statusNotifier.status;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _statusNotifier.removeListener(_onSubscriptionStatusChanged);
+    _statusNotifier.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
     try {
       final authState = await _authService.getAuthState();
       final packageInfo = await PackageInfo.fromPlatform();
+      final subscriptionStatus =
+          await _subscriptionService.getSubscriptionStatus();
 
       if (mounted) {
         setState(() {
           _authState = authState;
           _packageInfo = packageInfo;
+          _subscriptionStatus = subscriptionStatus;
           _isLoading = false;
         });
       }
@@ -118,6 +153,15 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
     );
   }
 
+  void _handleViewSubscription() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SubscriptionStatusScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -141,6 +185,8 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
               : ListView(
                   children: [
                     _buildAccountSection(),
+                    const Divider(),
+                    _buildSubscriptionSection(),
                     const Divider(),
                     _buildAppSection(),
                   ],
@@ -185,6 +231,65 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
     );
   }
 
+  Widget _buildSubscriptionSection() {
+    final isCloudSyncEnabled = _statusNotifier.isCloudSyncEnabled;
+    final statusText = _getSubscriptionStatusText();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Subscription',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+          ),
+        ),
+        ListTile(
+          leading: Icon(
+            _getSubscriptionStatusIcon(),
+            color: _getSubscriptionStatusColor(),
+          ),
+          title: const Text('Status'),
+          subtitle: Text(statusText),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _handleViewSubscription,
+        ),
+        ListTile(
+          leading: Icon(
+            isCloudSyncEnabled ? Icons.cloud_done : Icons.cloud_off,
+            color: isCloudSyncEnabled ? Colors.green : Colors.grey,
+          ),
+          title: const Text('Cloud Sync'),
+          subtitle: Text(
+            isCloudSyncEnabled ? 'Enabled' : 'Disabled',
+            style: TextStyle(
+              color: isCloudSyncEnabled ? Colors.green : Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _handleViewSubscription,
+              icon: const Icon(Icons.card_membership),
+              label: const Text('View Subscription'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildAppSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,5 +322,44 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
         ),
       ],
     );
+  }
+
+  String _getSubscriptionStatusText() {
+    switch (_subscriptionStatus) {
+      case SubscriptionStatus.active:
+        return 'Active';
+      case SubscriptionStatus.gracePeriod:
+        return 'Grace Period';
+      case SubscriptionStatus.expired:
+        return 'Expired';
+      case SubscriptionStatus.none:
+        return 'None';
+    }
+  }
+
+  IconData _getSubscriptionStatusIcon() {
+    switch (_subscriptionStatus) {
+      case SubscriptionStatus.active:
+        return Icons.check_circle;
+      case SubscriptionStatus.gracePeriod:
+        return Icons.warning;
+      case SubscriptionStatus.expired:
+        return Icons.error_outline;
+      case SubscriptionStatus.none:
+        return Icons.info_outline;
+    }
+  }
+
+  Color _getSubscriptionStatusColor() {
+    switch (_subscriptionStatus) {
+      case SubscriptionStatus.active:
+        return Colors.green;
+      case SubscriptionStatus.gracePeriod:
+        return Colors.orange;
+      case SubscriptionStatus.expired:
+        return Colors.red;
+      case SubscriptionStatus.none:
+        return Colors.grey;
+    }
   }
 }

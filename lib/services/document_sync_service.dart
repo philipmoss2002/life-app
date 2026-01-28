@@ -565,7 +565,7 @@ class DocumentSyncService {
           \$userId: String!,
           \$deletedAt: AWSDateTime!,
           \$deletedBy: String!,
-          \$reason: String
+          \$reason: String!
         ) {
           createDocumentTombstone(input: {
             syncId: \$syncId,

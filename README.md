@@ -7,18 +7,82 @@ A Flutter mobile app for managing household documents with cloud sync, built on 
 ### Core Functionality
 - **Document Management** - Create, edit, and delete documents with titles, descriptions, and labels
 - **File Attachments** - Attach multiple files to each document with automatic cloud backup
-- **Cloud Sync** - Automatic synchronization across devices using AWS S3 and DynamoDB
+- **Cloud Sync (Premium)** - Automatic synchronization across devices using AWS S3 and DynamoDB
 - **Offline Support** - Full offline functionality with automatic sync when connectivity is restored
 - **User Authentication** - Secure sign up and sign in with AWS Cognito User Pools
 - **Multi-Device Support** - Access your documents from any device with the same account
+- **Premium Subscriptions** - Optional cloud sync with flexible subscription plans
 
 ### Technical Features
 - **Clean Architecture** - Separation of concerns with services, repositories, and models
 - **Identity Pool Integration** - Persistent user identity across app reinstalls
 - **Private S3 Storage** - Each user's files are isolated using Identity Pool ID-based paths
 - **Sync State Management** - Visual indicators for sync status (synced, uploading, downloading, error)
+- **Subscription Gating** - Intelligent subscription checking with caching and fail-safe behavior
 - **Comprehensive Logging** - Built-in logging system for debugging and support
 - **Error Handling** - Robust error handling with retry logic and user-friendly messages
+
+---
+
+## Premium Subscriptions
+
+### Overview
+
+The app offers optional premium subscriptions that unlock cloud synchronization features. All users can use the app's core document management features with local storage, while premium subscribers gain additional cloud backup and multi-device sync capabilities.
+
+### Free vs Premium
+
+**Free (Local Only)**:
+- ✅ Create, edit, and delete documents
+- ✅ Add file attachments
+- ✅ Organize with labels and categories
+- ✅ Full offline functionality
+- ✅ Local device storage
+- ❌ Cloud backup
+- ❌ Multi-device sync
+
+**Premium (Cloud Sync)**:
+- ✅ All free features
+- ✅ Automatic cloud backup to AWS S3
+- ✅ Multi-device synchronization
+- ✅ Access documents from any device
+- ✅ Secure cloud storage
+- ✅ Automatic conflict resolution
+
+### Subscription Management
+
+**Purchasing**:
+- Available through Google Play (Android) or App Store (iOS)
+- Monthly subscription plan
+- Secure payment processing through platform stores
+
+**Managing Subscription**:
+- View status in Settings → Subscription Status
+- Manage through platform store (Google Play / App Store)
+- Cancel anytime through platform store
+- Restore purchases after reinstall
+
+**Subscription Status**:
+- **Active**: Cloud sync enabled, subscription valid
+- **Expired**: Cloud sync disabled, local access maintained
+- **Grace Period**: Temporary extension, cloud sync still enabled
+- **None**: No subscription, local-only mode
+
+### Technical Implementation
+
+**Subscription Gating**:
+- Intelligent caching (5-minute TTL) for performance
+- Fail-safe behavior (local operations always work)
+- Comprehensive error handling with retry logic
+- Real-time status updates across UI
+
+**Data Protection**:
+- Local data always accessible, regardless of subscription
+- No data loss on subscription expiration
+- User owns their data
+- Cloud access restricted to premium subscribers
+
+For detailed technical documentation, see [Subscription Gating Architecture](docs/SUBSCRIPTION_GATING_ARCHITECTURE.md).
 
 ---
 
@@ -96,6 +160,21 @@ Handles user authentication with AWS Cognito:
 - Identity Pool ID retrieval and caching
 - Authentication state management
 
+#### SubscriptionService
+Manages premium subscriptions and payment processing:
+- Query in-app purchase platforms (Google Play / App Store)
+- Cache subscription status with 5-minute TTL
+- Handle purchase restoration with retry logic
+- Broadcast subscription status changes
+- Navigate to platform store subscription management
+
+#### SubscriptionGatingMiddleware
+Enforces subscription requirements for cloud operations:
+- Check subscription status before cloud sync
+- Provide consistent gating logic across services
+- Log all gating decisions for monitoring
+- Fail-safe to local-only operations on errors
+
 #### FileService
 Manages file operations with AWS S3:
 - S3 path generation using format: `private/{identityPoolId}/documents/{syncId}/{fileName}`
@@ -106,6 +185,7 @@ Manages file operations with AWS S3:
 
 #### SyncService
 Coordinates synchronization between local and cloud:
+- Check subscription status before cloud operations
 - Automatic sync on app launch
 - Automatic sync on document changes
 - Automatic sync on connectivity restoration
@@ -328,10 +408,11 @@ All errors are translated to user-friendly messages:
 ### Test Coverage
 
 The app has comprehensive test coverage:
-- **Unit Tests:** 192+ tests (>85% coverage)
+- **Unit Tests:** 220+ tests (>85% coverage)
+- **Property-Based Tests:** 20 properties tested with 100+ iterations each
 - **Integration Tests:** 38 tests
 - **Widget Tests:** 50 tests
-- **Total:** 280+ automated tests
+- **Total:** 330+ automated tests
 
 ### Running Tests
 
@@ -474,9 +555,17 @@ See `DEPLOYMENT_GUIDE.md` for detailed deployment instructions.
 - User must sign in again with same credentials
 
 **Files not syncing**
+- Check subscription status in Settings
+- Verify you have an active premium subscription
 - Check network connectivity
 - Verify AWS credentials are valid
 - Check logs for specific error messages
+
+**Subscription not recognized**
+- Try "Restore Purchases" in Subscription Status screen
+- Ensure you're signed in with the same account used for purchase
+- Check platform store for subscription status
+- Wait a few minutes and refresh (platform delays possible)
 
 **Upload/download stuck**
 - Pull to refresh to retry sync
@@ -519,8 +608,12 @@ This project is open source and available for personal use.
 - Complete rewrite with clean architecture
 - AWS Amplify integration
 - Cloud sync with S3 and Identity Pool
+- **Premium subscription gating for cloud sync**
+- **Intelligent subscription caching (5-minute TTL)**
+- **Comprehensive error handling with fail-safe behavior**
 - Offline support with automatic sync
-- Comprehensive testing (280+ tests)
+- Comprehensive testing (330+ tests)
+- **Property-based testing for correctness guarantees**
 - Improved error handling and logging
 
 ### v1.0.0 (Legacy)

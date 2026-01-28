@@ -139,4 +139,56 @@ class NotificationService {
       ),
     );
   }
+
+  /// Show a notification when subscription expires
+  Future<void> showSubscriptionExpiredNotification() async {
+    await _notifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      'Subscription Expired',
+      'Your premium subscription has expired. Cloud sync is now disabled. Local documents remain accessible.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'subscription_channel',
+          'Subscription Status',
+          channelDescription: 'Notifications for subscription status changes',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+  }
+
+  /// Show a notification when subscription is renewed
+  Future<void> showSubscriptionRenewedNotification(int documentCount) async {
+    final message = documentCount > 0
+        ? 'Your premium subscription has been renewed. Cloud sync is now enabled. Syncing $documentCount pending document${documentCount == 1 ? '' : 's'}.'
+        : 'Your premium subscription has been renewed. Cloud sync is now enabled.';
+
+    await _notifications.show(
+      DateTime.now().millisecondsSinceEpoch % 100000,
+      'Subscription Renewed',
+      message,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'subscription_channel',
+          'Subscription Status',
+          channelDescription: 'Notifications for subscription status changes',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+  }
 }

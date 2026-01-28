@@ -193,7 +193,6 @@ class FileAttachmentSyncService {
   /// Delete a FileAttachment record from DynamoDB
   Future<void> deleteRemoteFileAttachment({
     required String syncId,
-    required String documentSyncId,
   }) async {
     try {
       _logService.log(
@@ -203,12 +202,10 @@ class FileAttachmentSyncService {
 
       const mutation = '''
         mutation DeleteFileAttachment(
-          \$syncId: String!,
-          \$documentSyncId: String!
+          \$syncId: String!
         ) {
           deleteFileAttachment(input: {
-            syncId: \$syncId,
-            documentSyncId: \$documentSyncId
+            syncId: \$syncId
           }) {
             syncId
           }
@@ -219,7 +216,6 @@ class FileAttachmentSyncService {
         document: mutation,
         variables: {
           'syncId': syncId,
-          'documentSyncId': documentSyncId,
         },
       );
 

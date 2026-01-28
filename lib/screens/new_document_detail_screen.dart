@@ -8,7 +8,11 @@ import '../repositories/document_repository.dart';
 import '../services/sync_service.dart';
 import '../services/authentication_service.dart';
 import '../services/file_service.dart';
+import '../services/document_sync_service.dart';
+import '../services/file_attachment_sync_service.dart';
 import '../services/log_service.dart' as log_svc;
+import '../services/subscription_status_notifier.dart';
+import '../services/subscription_service.dart';
 import '../widgets/file_thumbnail_widget.dart';
 
 /// Document detail screen for viewing and editing documents
@@ -28,7 +32,10 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
   final _syncService = SyncService();
   final _authService = AuthenticationService();
   final _fileService = FileService();
+  final _documentSyncService = DocumentSyncService();
+  final _fileAttachmentSyncService = FileAttachmentSyncService();
   final _logService = log_svc.LogService();
+  late final SubscriptionStatusNotifier _subscriptionNotifier;
 
   late TextEditingController _titleController;
   late DocumentCategory _selectedCategory;
@@ -42,6 +49,8 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _subscriptionNotifier = SubscriptionStatusNotifier(SubscriptionService());
+    _initializeSubscriptionNotifier();
     _isEditing = widget.document == null; // Edit mode if creating new
     _titleController =
         TextEditingController(text: widget.document?.title ?? '');
@@ -52,8 +61,27 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
         TextEditingController(text: widget.document?.notes ?? '');
   }
 
+  Future<void> _initializeSubscriptionNotifier() async {
+    try {
+      await _subscriptionNotifier.initialize();
+      _subscriptionNotifier.addListener(_onSubscriptionStatusChanged);
+    } catch (e) {
+      debugPrint('Failed to initialize subscription notifier: $e');
+    }
+  }
+
+  void _onSubscriptionStatusChanged() {
+    if (mounted) {
+      setState(() {
+        // Trigger rebuild when subscription status changes
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _subscriptionNotifier.removeListener(_onSubscriptionStatusChanged);
+    _subscriptionNotifier.dispose();
     _titleController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -369,12 +397,62 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
           .map((f) => f.s3Key!)
           .toList();
 
-      // Delete from local database first
+      // 1. Delete from local database first
       await _documentRepository.deleteDocument(document.syncId);
 
-      // Delete files from S3 (if any exist)
+      // 2. Delete from DynamoDB (soft delete with tombstone)
+      try {
+        _logService.log(
+          'Deleting document from DynamoDB: ${document.syncId}',
+          level: log_svc.LogLevel.info,
+        );
+        await _documentSyncService.deleteRemoteDocument(document.syncId);
+      } catch (e) {
+        // Log but don't fail - local deletion succeeded
+        _logService.log(
+          'Warning: Failed to delete document from DynamoDB: $e',
+          level: log_svc.LogLevel.warning,
+        );
+        debugPrint('Warning: Failed to delete from DynamoDB: $e');
+      }
+
+      // 3. Delete FileAttachment records from DynamoDB
+      try {
+        _logService.log(
+          'Deleting file attachments from DynamoDB for document: ${document.syncId}',
+          level: log_svc.LogLevel.info,
+        );
+
+        for (final file in document.files) {
+          try {
+            final fileAttachmentSyncId = '${document.syncId}_${file.fileName}';
+            await _fileAttachmentSyncService.deleteRemoteFileAttachment(
+              syncId: fileAttachmentSyncId,
+            );
+          } catch (e) {
+            _logService.log(
+              'Warning: Failed to delete file attachment ${file.fileName}: $e',
+              level: log_svc.LogLevel.warning,
+            );
+          }
+        }
+      } catch (e) {
+        _logService.log(
+          'Warning: Failed to delete file attachments from DynamoDB: $e',
+          level: log_svc.LogLevel.warning,
+        );
+        debugPrint(
+            'Warning: Failed to delete file attachments from DynamoDB: $e');
+      }
+
+      // 4. Delete files from S3 (if any exist)
       if (s3Keys.isNotEmpty) {
         try {
+          _logService.log(
+            'Deleting files from S3 for document: ${document.syncId}',
+            level: log_svc.LogLevel.info,
+          );
+
           final identityPoolId = await _authService.getIdentityPoolId();
           await _fileService.deleteDocumentFiles(
             syncId: document.syncId,
@@ -384,6 +462,10 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
         } catch (e) {
           // Log but don't fail - local deletion succeeded
           // S3 files can be cleaned up later or manually
+          _logService.log(
+            'Warning: Failed to delete S3 files: $e',
+            level: log_svc.LogLevel.warning,
+          );
           debugPrint('Warning: Failed to delete S3 files: $e');
         }
       }
@@ -422,6 +504,14 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
             Text(widget.document == null ? 'New Document' : 'Document Details'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // Subscription indicator in app bar
+          if (widget.document != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Center(
+                child: _buildSubscriptionBadge(),
+              ),
+            ),
           if (!_isEditing && widget.document != null)
             IconButton(
               icon: const Icon(Icons.edit),
@@ -587,6 +677,44 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildSubscriptionBadge() {
+    final isCloudSyncEnabled = _subscriptionNotifier.isCloudSyncEnabled;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isCloudSyncEnabled
+            ? Colors.green.withValues(alpha: 0.1)
+            : Colors.grey.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCloudSyncEnabled
+              ? Colors.green.withValues(alpha: 0.3)
+              : Colors.grey.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isCloudSyncEnabled ? Icons.cloud_done : Icons.cloud_off,
+            size: 14,
+            color: isCloudSyncEnabled ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isCloudSyncEnabled ? 'Cloud Synced' : 'Local Only',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: isCloudSyncEnabled ? Colors.green : Colors.grey,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

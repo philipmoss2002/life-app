@@ -7,7 +7,11 @@ import 'connectivity_service.dart';
 import 'file_service.dart';
 import 'document_sync_service.dart';
 import 'file_attachment_sync_service.dart';
+import 'subscription_gating_middleware.dart';
+import 'subscription_service.dart';
+import 'notification_service.dart';
 import 'log_service.dart' as log_svc;
+import 'analytics_service.dart';
 
 /// Custom exception for sync operations
 class SyncException implements Exception {
@@ -38,18 +42,73 @@ class SyncService {
   final _connectivityService = ConnectivityService();
   final _documentSyncService = DocumentSyncService();
   final _fileAttachmentSyncService = FileAttachmentSyncService();
+  final _subscriptionService = SubscriptionService();
   final _logService = log_svc.LogService();
+  final _analyticsService = AnalyticsService();
+
+  // Subscription gating middleware - will be initialized lazily
+  SubscriptionGatingMiddleware? _gatingMiddleware;
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
   bool _isSyncing = false;
   Timer? _debounceTimer;
   StreamSubscription<bool>? _connectivitySubscription;
+  StreamSubscription<SubscriptionStatus>? _subscriptionStatusSubscription;
+
+  // Track previous subscription status to detect transitions
+  SubscriptionStatus? _previousSubscriptionStatus;
 
   /// Stream of sync status changes
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
 
   /// Check if sync is currently in progress
   bool get isSyncing => _isSyncing;
+
+  /// Inject subscription gating middleware
+  void setGatingMiddleware(SubscriptionGatingMiddleware middleware) {
+    _gatingMiddleware = middleware;
+    _logService.log(
+      'Subscription gating middleware injected',
+      level: log_svc.LogLevel.info,
+    );
+  }
+
+  /// Check if cloud sync is allowed based on subscription status
+  ///
+  /// Error handling:
+  /// - On gating middleware error, assumes no subscription (fail-safe)
+  /// - Logs all errors for monitoring
+  /// - Returns false on any error to prevent cloud sync
+  Future<bool> _isSyncAllowed() async {
+    if (_gatingMiddleware == null) {
+      _logService.log(
+        'No gating middleware configured, allowing sync',
+        level: log_svc.LogLevel.warning,
+      );
+      return true;
+    }
+
+    try {
+      final allowed = await _gatingMiddleware!.canPerformCloudSync();
+      if (!allowed) {
+        _logService.log(
+          'Cloud sync not allowed: ${_gatingMiddleware!.getDenialReason()}',
+          level: log_svc.LogLevel.info,
+        );
+      }
+      return allowed;
+    } catch (e) {
+      _logService.log(
+        'Error checking sync permission: $e',
+        level: log_svc.LogLevel.error,
+      );
+      _logService.log(
+        'Failing safe to deny cloud sync due to error',
+        level: log_svc.LogLevel.warning,
+      );
+      return false;
+    }
+  }
 
   /// Initialize sync service and connectivity monitoring
   Future<void> initialize() async {
@@ -69,20 +128,159 @@ class SyncService {
       }
     });
 
+    // Listen for subscription status changes
+    _subscriptionStatusSubscription = _subscriptionService.subscriptionChanges
+        .listen(_onSubscriptionStatusChanged);
+
+    // Get initial subscription status
+    _previousSubscriptionStatus =
+        await _subscriptionService.getSubscriptionStatus();
+
     _logService.log(
       'Sync service initialized',
       level: log_svc.LogLevel.info,
     );
   }
 
+  /// Handle subscription status changes
+  void _onSubscriptionStatusChanged(SubscriptionStatus newStatus) async {
+    _logService.log(
+      'Subscription status changed: $_previousSubscriptionStatus -> $newStatus',
+      level: log_svc.LogLevel.info,
+    );
+
+    // Track analytics event for subscription lifecycle
+    await _analyticsService.trackAuthEvent(
+      type:
+          AuthEventType.tokenRefresh, // Using as proxy for subscription change
+      success: true,
+    );
+
+    // Detect transition from active to expired/none
+    final wasActive = _previousSubscriptionStatus == SubscriptionStatus.active;
+    final isNowInactive = newStatus == SubscriptionStatus.expired ||
+        newStatus == SubscriptionStatus.none;
+
+    if (wasActive && isNowInactive) {
+      _logService.log(
+        'Subscription expired - cloud sync disabled',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Log state transition
+      _logService.logAuditEvent(
+        eventType: 'subscription_state_change',
+        action: 'expiration',
+        outcome: 'success',
+        details: 'Subscription expired - cloud sync disabled',
+        metadata: {
+          'previous_status': _previousSubscriptionStatus.toString(),
+          'new_status': newStatus.toString(),
+          'transition_type': 'expiration',
+        },
+      );
+
+      // Display notification about expiration
+      try {
+        final notificationService = NotificationService.instance;
+        await notificationService.showSubscriptionExpiredNotification();
+      } catch (e) {
+        _logService.log(
+          'Failed to show subscription expiration notification: $e',
+          level: log_svc.LogLevel.error,
+        );
+      }
+    }
+
+    // Detect transition from inactive to active
+    final wasInactive = _previousSubscriptionStatus != null &&
+        _previousSubscriptionStatus != SubscriptionStatus.active;
+    final isNowActive = newStatus == SubscriptionStatus.active;
+
+    if (wasInactive && isNowActive) {
+      _logService.log(
+        'Subscription activated - triggering sync for pending documents',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Log state transition
+      _logService.logAuditEvent(
+        eventType: 'subscription_state_change',
+        action: 'activation',
+        outcome: 'success',
+        details: 'Subscription activated - triggering pending sync',
+        metadata: {
+          'previous_status': _previousSubscriptionStatus.toString(),
+          'new_status': newStatus.toString(),
+          'transition_type': 'activation',
+        },
+      );
+
+      // Get count of pending documents before syncing
+      int pendingCount = 0;
+      try {
+        final pendingDocs =
+            await _documentRepository.getDocumentsNeedingUpload();
+        pendingCount = pendingDocs.length;
+
+        _logService.log(
+          'Found $pendingCount pending documents to sync after activation',
+          level: log_svc.LogLevel.info,
+        );
+      } catch (e) {
+        _logService.log(
+          'Failed to get pending document count: $e',
+          level: log_svc.LogLevel.error,
+        );
+      }
+
+      // Display notification about subscription renewal
+      try {
+        final notificationService = NotificationService.instance;
+        await notificationService
+            .showSubscriptionRenewedNotification(pendingCount);
+      } catch (e) {
+        _logService.log(
+          'Failed to show subscription renewal notification: $e',
+          level: log_svc.LogLevel.error,
+        );
+      }
+
+      // Trigger sync for all pending documents
+      try {
+        await syncPendingDocuments();
+
+        _logService.log(
+          'Subscription activation sync complete: $pendingCount documents synced',
+          level: log_svc.LogLevel.info,
+        );
+      } catch (e) {
+        _logService.log(
+          'Failed to sync pending documents after subscription activation: $e',
+          level: log_svc.LogLevel.error,
+        );
+      }
+    }
+
+    // Update previous status for next comparison
+    _previousSubscriptionStatus = newStatus;
+  }
+
   /// Dispose resources
   void dispose() {
     _connectivitySubscription?.cancel();
+    _subscriptionStatusSubscription?.cancel();
     _syncStatusController.close();
     _debounceTimer?.cancel();
   }
 
   /// Perform full sync operation (upload pending, download new)
+  ///
+  /// Error handling:
+  /// - Returns successful result with zero operations if subscription check fails
+  /// - Continues with remaining operations if individual operations fail
+  /// - Logs all errors for monitoring
+  /// - Always completes local operations regardless of cloud sync errors
   Future<SyncResult> performSync() async {
     if (_isSyncing) {
       _logService.log(
@@ -99,6 +297,36 @@ class SyncService {
         level: log_svc.LogLevel.warning,
       );
       throw SyncException('No network connectivity');
+    }
+
+    // Check subscription status before proceeding with cloud sync
+    bool syncAllowed = false;
+    try {
+      syncAllowed = await _isSyncAllowed();
+    } catch (e) {
+      _logService.log(
+        'Error checking sync permission: $e',
+        level: log_svc.LogLevel.error,
+      );
+      _logService.log(
+        'Skipping cloud sync due to permission check error',
+        level: log_svc.LogLevel.warning,
+      );
+    }
+
+    if (!syncAllowed) {
+      _logService.log(
+        'Skipping cloud sync - no active subscription',
+        level: log_svc.LogLevel.info,
+      );
+      // Return a successful result with zero operations
+      return SyncResult(
+        uploadedCount: 0,
+        downloadedCount: 0,
+        failedCount: 0,
+        errors: [],
+        duration: Duration.zero,
+      );
     }
 
     _isSyncing = true;
@@ -220,10 +448,34 @@ class SyncService {
   }
 
   /// Sync a specific document
+  ///
+  /// Error handling:
+  /// - Returns silently if subscription check fails (no active subscription)
+  /// - Logs all errors for monitoring
+  /// - Maintains error state in document on failure
   Future<void> syncDocument(String syncId) async {
     _logService.log('Syncing document: $syncId', level: log_svc.LogLevel.info);
 
     try {
+      // Check subscription status before proceeding with cloud sync
+      bool syncAllowed = false;
+      try {
+        syncAllowed = await _isSyncAllowed();
+      } catch (e) {
+        _logService.log(
+          'Error checking sync permission for document $syncId: $e',
+          level: log_svc.LogLevel.error,
+        );
+      }
+
+      if (!syncAllowed) {
+        _logService.log(
+          'Skipping cloud sync for document $syncId - no active subscription',
+          level: log_svc.LogLevel.info,
+        );
+        return;
+      }
+
       if (!await _authService.isAuthenticated()) {
         throw SyncException('User is not authenticated');
       }
@@ -255,6 +507,91 @@ class SyncService {
     } catch (e) {
       _logService.log(
         'Failed to sync document $syncId: $e',
+        level: log_svc.LogLevel.error,
+      );
+      rethrow;
+    }
+  }
+
+  /// Sync all pending documents (for new subscribers)
+  ///
+  /// This method is called when a user activates a subscription to sync
+  /// all documents that were created while they didn't have an active subscription.
+  Future<void> syncPendingDocuments() async {
+    _logService.log(
+      'Syncing pending documents for new subscriber',
+      level: log_svc.LogLevel.info,
+    );
+
+    try {
+      // Check subscription status
+      if (!await _isSyncAllowed()) {
+        _logService.log(
+          'Cannot sync pending documents - no active subscription',
+          level: log_svc.LogLevel.warning,
+        );
+        return;
+      }
+
+      if (!await _authService.isAuthenticated()) {
+        throw SyncException('User is not authenticated');
+      }
+
+      // Get all documents with pending upload status
+      final pendingDocs = await _documentRepository.getDocumentsNeedingUpload();
+
+      _logService.log(
+        'Found ${pendingDocs.length} pending documents to sync',
+        level: log_svc.LogLevel.info,
+      );
+
+      if (pendingDocs.isEmpty) {
+        _logService.log(
+          'No pending documents to sync',
+          level: log_svc.LogLevel.info,
+        );
+        return;
+      }
+
+      final identityPoolId = await _authService.getIdentityPoolId();
+      int successCount = 0;
+      int failureCount = 0;
+
+      // Sync each pending document
+      for (final doc in pendingDocs) {
+        try {
+          _logService.log(
+            'Syncing pending document: ${doc.title} (${doc.syncId})',
+            level: log_svc.LogLevel.info,
+          );
+
+          // Push document metadata to DocumentDB
+          await _documentSyncService.pushDocumentToRemote(doc);
+
+          // Upload files to S3
+          await uploadDocumentFiles(doc.syncId, identityPoolId);
+
+          successCount++;
+          _logService.log(
+            'Successfully synced pending document: ${doc.title}',
+            level: log_svc.LogLevel.info,
+          );
+        } catch (e) {
+          failureCount++;
+          _logService.log(
+            'Failed to sync pending document ${doc.title}: $e',
+            level: log_svc.LogLevel.error,
+          );
+        }
+      }
+
+      _logService.log(
+        'Pending documents sync complete: $successCount succeeded, $failureCount failed',
+        level: log_svc.LogLevel.info,
+      );
+    } catch (e) {
+      _logService.log(
+        'Failed to sync pending documents: $e',
         level: log_svc.LogLevel.error,
       );
       rethrow;
