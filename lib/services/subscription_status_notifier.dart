@@ -81,6 +81,11 @@ class SubscriptionStatusNotifier extends ChangeNotifier {
     try {
       safePrint('Initializing SubscriptionStatusNotifier...');
 
+      // Initialize the subscription service first
+      safePrint('Initializing SubscriptionService...');
+      await _subscriptionService.initialize();
+      safePrint('SubscriptionService initialized');
+
       // Get initial subscription status
       _status = await _subscriptionService.getSubscriptionStatus();
       safePrint('Initial subscription status: $_status');

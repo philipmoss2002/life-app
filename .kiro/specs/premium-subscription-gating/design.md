@@ -74,7 +74,7 @@ The key principle is graceful degradation: non-subscribed users experience full 
 
 **Responsibilities**:
 - Query in-app purchase platforms for subscription status
-- Cache subscription status with 5-minute TTL
+- Cache subscription status with 24 hour TTL
 - Broadcast subscription status changes
 - Handle purchase restoration
 - Provide subscription status to other services
@@ -103,7 +103,7 @@ class SubscriptionService {
 ```
 
 **Caching Strategy**:
-- Cache subscription status for 5 minutes
+- Cache subscription status for 24 hours
 - Cache includes: status, expiration date, last check timestamp
 - Cache invalidated on: manual refresh, purchase completion, app restart
 - Cache shared across all service instances (singleton pattern)

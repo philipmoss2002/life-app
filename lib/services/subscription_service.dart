@@ -113,6 +113,7 @@ class SubscriptionService with WidgetsBindingObserver {
       _subscriptionController.stream;
 
   bool _isInitialized = false;
+  bool _purchaseStreamInitialized = false;
 
   /// Initialize the subscription service
   /// Must be called before using other methods
@@ -123,43 +124,94 @@ class SubscriptionService with WidgetsBindingObserver {
     }
 
     try {
-      safePrint('Starting subscription service initialization...');
+      _logService.log(
+        '═══ INITIALIZING SUBSCRIPTION SERVICE ═══',
+        level: log_svc.LogLevel.info,
+      );
+      _logService.log(
+        'Platform: ${Platform.isAndroid ? "Android (Google Play)" : Platform.isIOS ? "iOS (App Store)" : "Unknown"}',
+        level: log_svc.LogLevel.info,
+      );
+      _logService.log(
+        'Product IDs: $_productIds',
+        level: log_svc.LogLevel.info,
+      );
 
       // Register as lifecycle observer
       WidgetsBinding.instance.addObserver(this);
-      safePrint('Registered as app lifecycle observer');
+      _logService.log(
+        '✅ Registered as app lifecycle observer',
+        level: log_svc.LogLevel.info,
+      );
 
       // Check if in-app purchases are available
+      _logService.log(
+        'Checking if in-app purchases are available...',
+        level: log_svc.LogLevel.info,
+      );
       final available = await _inAppPurchase.isAvailable();
       if (!available) {
+        _logService.log(
+          '❌ In-app purchases NOT available on this device',
+          level: log_svc.LogLevel.error,
+        );
         throw Exception('In-app purchases not available on this device');
       }
-      safePrint('In-app purchases are available');
+      _logService.log(
+        '✅ In-app purchases are available',
+        level: log_svc.LogLevel.info,
+      );
 
       // Listen to purchase updates
       _purchaseSubscription = _inAppPurchase.purchaseStream.listen(
         _handlePurchaseUpdates,
         onDone: () {
-          safePrint('Purchase stream closed');
+          _logService.log(
+            '⚠️ Purchase stream closed',
+            level: log_svc.LogLevel.warning,
+          );
           _purchaseSubscription.cancel();
+          _purchaseStreamInitialized = false;
         },
         onError: (error) {
-          safePrint('Purchase stream error: $error');
+          _logService.log(
+            '❌ Purchase stream error: $error',
+            level: log_svc.LogLevel.error,
+          );
         },
       );
-      safePrint('Purchase stream listener set up');
+      _purchaseStreamInitialized = true;
+      _logService.log(
+        'Purchase stream listener set up - waiting for purchase events',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Mark as initialized before calling restorePurchases
+      _isInitialized = true;
 
       // Check for existing purchases and pending acknowledgments
-      safePrint('Checking for existing purchases...');
+      _logService.log(
+        'Checking for existing purchases...',
+        level: log_svc.LogLevel.info,
+      );
       await restorePurchases();
 
       // Check for any pending purchases that need acknowledgment
       await _checkPendingPurchases();
 
-      _isInitialized = true;
-      safePrint('Subscription service initialization completed successfully');
+      _logService.log(
+        '✅ Subscription service initialization completed successfully',
+        level: log_svc.LogLevel.info,
+      );
+      _logService.log(
+        'Current status: $_currentStatus',
+        level: log_svc.LogLevel.info,
+      );
     } catch (e) {
-      safePrint('Failed to initialize subscription service: $e');
+      _logService.log(
+        'Failed to initialize subscription service: $e',
+        level: log_svc.LogLevel.error,
+      );
       rethrow;
     }
   }
@@ -206,21 +258,53 @@ class SubscriptionService with WidgetsBindingObserver {
   /// Get available subscription plans
   Future<List<SubscriptionPlan>> getAvailablePlans() async {
     try {
+      _logService.log(
+        'Querying available subscription products: $_productIds',
+        level: log_svc.LogLevel.info,
+      );
+
       final response = await _inAppPurchase.queryProductDetails(_productIds);
 
+      _logService.log(
+        '═══ PRODUCT QUERY RESPONSE ═══',
+        level: log_svc.LogLevel.info,
+      );
+
       if (response.error != null) {
+        _logService.log(
+          '❌ Error: ${response.error!.message} (Code: ${response.error!.code})',
+          level: log_svc.LogLevel.error,
+        );
         throw Exception('Failed to load products: ${response.error}');
       }
 
+      _logService.log(
+        '✅ Found ${response.productDetails.length} product(s)',
+        level: log_svc.LogLevel.info,
+      );
+
       if (response.notFoundIDs.isNotEmpty) {
-        safePrint('Products not found: ${response.notFoundIDs}');
+        _logService.log(
+          '⚠️ Products not found: ${response.notFoundIDs} - These product IDs are not configured in Google Play Console',
+          level: log_svc.LogLevel.warning,
+        );
+      }
+
+      for (final product in response.productDetails) {
+        _logService.log(
+          'Product: ID=${product.id}, Title=${product.title}, Price=${product.price} ${product.currencyCode}',
+          level: log_svc.LogLevel.info,
+        );
       }
 
       return response.productDetails
           .map((details) => SubscriptionPlan.fromProductDetails(details))
           .toList();
     } catch (e) {
-      safePrint('Error getting available plans: $e');
+      _logService.log(
+        'Error getting available plans: $e',
+        level: log_svc.LogLevel.error,
+      );
       rethrow;
     }
   }
@@ -305,7 +389,7 @@ class SubscriptionService with WidgetsBindingObserver {
               'Checking for existing purchases to update subscription status...');
           await restorePurchases();
           // Give a moment for the purchase stream to process any restored purchases
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 5000));
         } catch (e) {
           safePrint('Error checking existing purchases: $e');
           // Continue with current status
@@ -523,7 +607,7 @@ class SubscriptionService with WidgetsBindingObserver {
       try {
         await restorePurchases();
         // Give time for purchase stream to process
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 5000));
 
         // Update cache with fresh data
         _updateCache();
@@ -766,19 +850,52 @@ class SubscriptionService with WidgetsBindingObserver {
 
     while (retryCount < maxRetries) {
       try {
-        safePrint(
-            'Starting purchase restoration (attempt ${retryCount + 1}/$maxRetries)...');
-
         _logService.log(
-          'Purchase restoration attempt ${retryCount + 1}/$maxRetries',
+          'Starting purchase restoration (attempt ${retryCount + 1}/$maxRetries)',
           level: log_svc.LogLevel.info,
         );
 
         // Query platform for previous purchases
+        _logService.log(
+          'Calling InAppPurchase.restorePurchases()...',
+          level: log_svc.LogLevel.info,
+        );
+
+        // Check if purchase stream listener is initialized
+        if (!_purchaseStreamInitialized) {
+          _logService.log(
+            '❌ ERROR: Purchase stream not initialized! Call initialize() first.',
+            level: log_svc.LogLevel.error,
+          );
+          throw Exception(
+              'Purchase stream not initialized. Call initialize() first.');
+        }
+
+        // Check if purchase stream listener is still active
+        if (_purchaseSubscription.isPaused) {
+          _logService.log(
+            '⚠️ WARNING: Purchase stream is PAUSED!',
+            level: log_svc.LogLevel.warning,
+          );
+        }
+
         await _inAppPurchase.restorePurchases();
+        _logService.log(
+          'InAppPurchase.restorePurchases() completed',
+          level: log_svc.LogLevel.info,
+        );
 
         // Give time for purchase stream to process restored purchases
-        await Future.delayed(const Duration(milliseconds: 500));
+        _logService.log(
+          'Waiting 1 second for purchase stream to fire...',
+          level: log_svc.LogLevel.info,
+        );
+        await Future.delayed(const Duration(seconds: 1));
+
+        _logService.log(
+          'Wait complete - if you did NOT see "GOOGLE PLAY RESPONSE" above, the purchase stream never fired!',
+          level: log_svc.LogLevel.warning,
+        );
 
         // Get updated status after restoration
         final updatedStatus = await getSubscriptionStatus();
@@ -787,11 +904,17 @@ class SubscriptionService with WidgetsBindingObserver {
         try {
           _updateCache();
         } catch (e) {
-          safePrint('Error updating cache after restoration: $e');
+          _logService.log(
+            'Error updating cache after restoration: $e',
+            level: log_svc.LogLevel.warning,
+          );
           // Continue even if cache update fails
         }
 
-        safePrint('Purchase restoration completed. Status: $updatedStatus');
+        _logService.log(
+          'Purchase restoration completed. Status: $updatedStatus',
+          level: log_svc.LogLevel.info,
+        );
 
         // Log successful restoration
         _logService.logAuditEvent(
@@ -817,21 +940,24 @@ class SubscriptionService with WidgetsBindingObserver {
         );
       } catch (e) {
         retryCount++;
-        safePrint(
-            'Error restoring purchases (attempt $retryCount/$maxRetries): $e');
-
         _logService.log(
-          'Purchase restoration error (attempt $retryCount/$maxRetries): $e',
+          'Error restoring purchases (attempt $retryCount/$maxRetries): $e',
           level: log_svc.LogLevel.error,
         );
 
         if (retryCount < maxRetries) {
-          safePrint('Retrying in ${retryDelay.inSeconds} seconds...');
+          _logService.log(
+            'Retrying in ${retryDelay.inSeconds} seconds...',
+            level: log_svc.LogLevel.info,
+          );
           await Future.delayed(retryDelay);
           // Exponential backoff
           retryDelay *= 2;
         } else {
-          safePrint('All retry attempts failed for purchase restoration');
+          _logService.log(
+            'All retry attempts failed for purchase restoration',
+            level: log_svc.LogLevel.error,
+          );
 
           // Log failed restoration
           _logService.logAuditEvent(
@@ -870,7 +996,59 @@ class SubscriptionService with WidgetsBindingObserver {
 
   /// Handle purchase updates from the purchase stream
   void _handlePurchaseUpdates(List<PurchaseDetails> purchaseDetailsList) {
-    for (final purchaseDetails in purchaseDetailsList) {
+    // CRITICAL: Log that this method was called
+    _logService.log(
+      '🔔 _handlePurchaseUpdates() CALLED - Purchase stream fired!',
+      level: log_svc.LogLevel.info,
+    );
+
+    // Log to in-app logs
+    _logService.log(
+      '═══ GOOGLE PLAY RESPONSE: Received ${purchaseDetailsList.length} purchase(s) ═══',
+      level: log_svc.LogLevel.info,
+    );
+
+    if (purchaseDetailsList.isEmpty) {
+      _logService.log(
+        '⚠️ No purchases returned from Google Play - possible reasons: wrong account, signature mismatch, or package name mismatch',
+        level: log_svc.LogLevel.warning,
+      );
+    } else {
+      _logService.log(
+        'Found ${purchaseDetailsList.length} purchase(s) from Google Play',
+        level: log_svc.LogLevel.info,
+      );
+    }
+
+    for (int i = 0; i < purchaseDetailsList.length; i++) {
+      final purchaseDetails = purchaseDetailsList[i];
+
+      // Log to in-app logs with key details
+      _logService.log(
+        'Purchase ${i + 1}: ProductID=${purchaseDetails.productID}, Status=${purchaseDetails.status}, PurchaseID=${purchaseDetails.purchaseID ?? "null"}',
+        level: log_svc.LogLevel.info,
+      );
+
+      if (purchaseDetails.error != null) {
+        _logService.log(
+          '❌ Purchase error: ${purchaseDetails.error!.message} (Code: ${purchaseDetails.error!.code})',
+          level: log_svc.LogLevel.error,
+        );
+      }
+
+      // Platform-specific details
+      if (Platform.isAndroid && purchaseDetails is GooglePlayPurchaseDetails) {
+        _logService.log(
+          'Android: Acknowledged=${purchaseDetails.billingClientPurchase.isAcknowledged}, AutoRenewing=${purchaseDetails.billingClientPurchase.isAutoRenewing}, State=${purchaseDetails.billingClientPurchase.purchaseState}',
+          level: log_svc.LogLevel.info,
+        );
+      } else if (Platform.isIOS && purchaseDetails is AppStorePurchaseDetails) {
+        _logService.log(
+          'iOS: TransactionID=${purchaseDetails.skPaymentTransaction.transactionIdentifier ?? "null"}',
+          level: log_svc.LogLevel.info,
+        );
+      }
+
       _processPurchase(purchaseDetails);
     }
   }
@@ -936,7 +1114,14 @@ class SubscriptionService with WidgetsBindingObserver {
   /// In production, this should verify with your backend server
   Future<bool> _verifyPurchase(PurchaseDetails purchaseDetails) async {
     try {
-      safePrint('Verifying purchase for ${purchaseDetails.productID}');
+      _logService.log(
+        '═══ VERIFYING PURCHASE ═══',
+        level: log_svc.LogLevel.info,
+      );
+      _logService.log(
+        'Product ID: ${purchaseDetails.productID}, Status: ${purchaseDetails.status}, Expected: $_monthlySubscriptionId',
+        level: log_svc.LogLevel.info,
+      );
 
       // For now, accept all purchases that have the correct status
       // In production, you should verify with your backend server
@@ -945,32 +1130,58 @@ class SubscriptionService with WidgetsBindingObserver {
         // Platform-specific verification
         if (Platform.isAndroid) {
           final androidDetails = purchaseDetails as GooglePlayPurchaseDetails;
-          safePrint(
-              'Android purchase verification - Product: ${androidDetails.productID}');
+          _logService.log(
+            'Android verification: Acknowledged=${androidDetails.billingClientPurchase.isAcknowledged}, AutoRenewing=${androidDetails.billingClientPurchase.isAutoRenewing}',
+            level: log_svc.LogLevel.info,
+          );
 
           // Check if it's our subscription product
           if (androidDetails.productID == _monthlySubscriptionId) {
-            safePrint('Verified: Premium monthly subscription');
+            _logService.log(
+              '✅ VERIFIED: Premium monthly subscription',
+              level: log_svc.LogLevel.info,
+            );
             return true;
+          } else {
+            _logService.log(
+              '❌ FAILED: Product ID mismatch - Expected: $_monthlySubscriptionId, Got: ${androidDetails.productID}',
+              level: log_svc.LogLevel.error,
+            );
           }
         } else if (Platform.isIOS) {
           final iosDetails = purchaseDetails as AppStorePurchaseDetails;
-          safePrint(
-              'iOS purchase verification - Product: ${iosDetails.productID}');
+          _logService.log(
+            'iOS verification: TransactionID=${iosDetails.skPaymentTransaction.transactionIdentifier ?? "null"}',
+            level: log_svc.LogLevel.info,
+          );
 
           // Check if it's our subscription product
           if (iosDetails.productID == _monthlySubscriptionId) {
-            safePrint('Verified: Premium monthly subscription');
+            _logService.log(
+              '✅ VERIFIED: Premium monthly subscription',
+              level: log_svc.LogLevel.info,
+            );
             return true;
+          } else {
+            _logService.log(
+              '❌ FAILED: Product ID mismatch - Expected: $_monthlySubscriptionId, Got: ${iosDetails.productID}',
+              level: log_svc.LogLevel.error,
+            );
           }
         }
+      } else {
+        _logService.log(
+          '❌ FAILED: Invalid purchase status - ${purchaseDetails.status}',
+          level: log_svc.LogLevel.error,
+        );
       }
 
-      safePrint(
-          'Purchase verification failed - Status: ${purchaseDetails.status}, Product: ${purchaseDetails.productID}');
       return false;
     } catch (e) {
-      safePrint('Error verifying purchase: $e');
+      _logService.log(
+        '❌ ERROR verifying purchase: $e',
+        level: log_svc.LogLevel.error,
+      );
       return false;
     }
   }
@@ -1001,7 +1212,10 @@ class SubscriptionService with WidgetsBindingObserver {
   /// Dispose resources
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _purchaseSubscription.cancel();
+    if (_purchaseStreamInitialized) {
+      _purchaseSubscription.cancel();
+      _purchaseStreamInitialized = false;
+    }
     _subscriptionController.close();
   }
 
@@ -1028,7 +1242,7 @@ class SubscriptionService with WidgetsBindingObserver {
       await _inAppPurchase.restorePurchases();
 
       // Give time for purchase stream to process
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 5000));
 
       // Get updated status
       final newStatus = await getSubscriptionStatus();

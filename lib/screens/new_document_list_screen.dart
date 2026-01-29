@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/new_document.dart';
 import '../models/sync_state.dart';
@@ -33,17 +34,32 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
   void initState() {
     super.initState();
     _subscriptionNotifier = SubscriptionStatusNotifier(SubscriptionService());
+    // Initialize subscription notifier in background (non-blocking)
     _initializeSubscriptionNotifier();
+    // Load documents immediately (don't wait for subscription)
     _checkAuthAndLoadDocuments();
     _listenToSyncStatus();
   }
 
   Future<void> _initializeSubscriptionNotifier() async {
     try {
-      await _subscriptionNotifier.initialize();
+      // Initialize with timeout to prevent blocking UI
+      await _subscriptionNotifier.initialize().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint(
+              'Subscription initialization timed out - continuing without subscription');
+          throw TimeoutException('Subscription initialization timed out');
+        },
+      );
       _subscriptionNotifier.addListener(_onSubscriptionStatusChanged);
+      // Trigger rebuild after subscription is initialized
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
       debugPrint('Failed to initialize subscription notifier: $e');
+      // Continue anyway - app should work without subscription
     }
   }
 
