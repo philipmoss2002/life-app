@@ -69,6 +69,7 @@ class AmplifyService {
       safePrint('Auth plugin added');
 
       // Add API plugin (required for GraphQL sync)
+      // Note: ModelProvider is used automatically by ModelMutations/ModelQueries
       await Amplify.addPlugin(AmplifyAPI());
       safePrint('API plugin added');
 

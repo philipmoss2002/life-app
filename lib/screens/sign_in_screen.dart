@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import '../services/authentication_service.dart';
+import '../services/sync_service.dart';
 import 'sign_up_screen.dart';
-import 'forgot_password_screen.dart';
+import 'new_document_list_screen.dart';
+import 'verify_email_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -15,6 +16,8 @@ class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthenticationService();
+  final _syncService = SyncService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -38,28 +41,43 @@ class _SignInScreenState extends State<SignInScreen> {
     });
 
     try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final success = await authProvider.signIn(
+      await _authService.signIn(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
       if (mounted) {
-        if (success) {
-          // Navigate back to home screen with success
-          Navigator.pop(context, true);
+        // Trigger sync on app launch after successful sign in
+        _syncService.syncOnAppLaunch();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const NewDocumentListScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        // Check for UserNotConfirmedException - navigate to verification screen
+        if (e.toString().contains('not confirmed') ||
+            e.toString().contains('UserNotConfirmedException')) {
+          // Navigate to verification screen with email and fromSignIn flag
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => VerifyEmailScreen(
+                email: _emailController.text.trim(),
+                fromSignIn: true,
+              ),
+            ),
+          );
         } else {
           setState(() {
-            _errorMessage = 'Failed to sign in. Please try again.';
+            _errorMessage = _getErrorMessage(e.toString());
             _isLoading = false;
           });
         }
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = _getErrorMessage(e.toString());
-        _isLoading = false;
-      });
     }
   }
 
@@ -67,8 +85,9 @@ class _SignInScreenState extends State<SignInScreen> {
     if (error.contains('UserNotFoundException') ||
         error.contains('NotAuthorizedException')) {
       return 'Invalid email or password.';
-    } else if (error.contains('UserNotConfirmedException')) {
-      return 'Please verify your email before signing in.';
+    } else if (error.contains('UserNotConfirmedException') ||
+        error.contains('not confirmed')) {
+      return 'Please verify your email. Redirecting to verification...';
     } else if (error.contains('NetworkException')) {
       return 'Network error. Please check your connection.';
     } else {
@@ -185,23 +204,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   onFieldSubmitted: (_) => _handleSignIn(),
                 ),
                 const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _isLoading
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const ForgotPasswordScreen(),
-                              ),
-                            );
-                          },
-                    child: const Text('Forgot Password?'),
-                  ),
-                ),
+                const SizedBox(height: 8),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _handleSignIn,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/authentication_service.dart';
 import 'verify_email_screen.dart';
+import 'new_document_list_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -65,27 +66,48 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      await _authService.signUp(
+      final result = await _authService.signUp(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
       if (mounted) {
-        // Navigate to email verification screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VerifyEmailScreen(
-              email: _emailController.text.trim(),
+        // Check if email verification is needed
+        if (result.needsConfirmation) {
+          // Navigate to verification screen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => VerifyEmailScreen(
+                email: _emailController.text.trim(),
+                fromSignIn: false,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          // Account created and verified (shouldn't happen with Cognito, but handle it)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created successfully! Please sign in.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          //Navigator.pop(context);
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const NewDocumentListScreen(),
+            ),
+          );
+        }
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = _getErrorMessage(e.toString());
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = _getErrorMessage(e.toString());
+          _isLoading = false;
+        });
+      }
     }
   }
 
