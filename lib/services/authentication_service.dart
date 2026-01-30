@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import '../models/auth_state.dart';
+import 'new_database_service.dart';
+import 'log_service.dart' as app_log;
 
 /// Custom exception for authentication errors
 class AuthenticationException implements Exception {
@@ -25,6 +27,7 @@ class AuthenticationService {
   String? _cachedIdentityPoolId;
   final _authStateController = StreamController<AuthState>.broadcast();
   StreamSubscription<AuthHubEvent>? _authHubSubscription;
+  final _logService = app_log.LogService();
 
   /// Stream of authentication state changes
   Stream<AuthState> get authStateStream => _authStateController.stream;
@@ -79,14 +82,30 @@ class AuthenticationService {
   }
 
   /// Sign in an existing user with email and password
+  ///
+  /// Implements rapid authentication change handling by:
+  /// 1. Preparing database for sign-in (ensuring previous database is closed)
+  /// 2. Authenticating with AWS Cognito
+  /// 3. Initializing user's database
+  /// 4. Emitting auth state change
+  ///
+  /// Requirements: 10.1, 10.4
   Future<AuthResult> signIn(String email, String password) async {
     try {
+      // Prepare for sign-in (ensure previous database is closed)
+      // Requirements: 10.4
+      await NewDatabaseService.instance.prepareForSignIn();
+
       final result = await Amplify.Auth.signIn(
         username: email,
         password: password,
       );
 
       if (result.isSignedIn) {
+        // Get user ID and initialize database
+        final userId = await getUserId();
+        await _initializeUserDatabase(userId);
+
         // Cache Identity Pool ID after successful sign in
         await getIdentityPoolId();
 
@@ -211,17 +230,127 @@ class AuthenticationService {
   }
 
   /// Sign out the current user and clear cached credentials
+  ///
+  /// Implements rapid authentication change handling by:
+  /// 1. Preparing database for sign-out (waiting for operations)
+  /// 2. Closing database connection
+  /// 3. Signing out from AWS Cognito
+  /// 4. Emitting auth state change
+  ///
+  /// Requirements: 10.1, 10.3, 10.4
   Future<void> signOut() async {
     try {
+      _logService.log(
+        'Starting sign-out process',
+        level: app_log.LogLevel.info,
+      );
+
+      // Prepare database for sign-out (wait for operations and close)
+      // Requirements: 10.3, 10.4
+      try {
+        await NewDatabaseService.instance.prepareForSignOut();
+      } catch (e) {
+        // Log error but don't fail sign out if database preparation fails
+        _logService.log(
+          'Error preparing database for sign out: $e',
+          level: app_log.LogLevel.warning,
+        );
+      }
+
+      // Sign out from AWS Cognito
       await Amplify.Auth.signOut();
       _cachedIdentityPoolId = null;
 
       // Emit auth state change
       _authStateController.add(AuthState(isAuthenticated: false));
+
+      _logService.log(
+        'User signed out successfully',
+        level: app_log.LogLevel.info,
+      );
     } on AuthException catch (e) {
       throw AuthenticationException('Sign out failed: ${e.message}');
     } catch (e) {
       throw AuthenticationException('Sign out failed: $e');
+    }
+  }
+
+  /// Initialize database for user (including migration if needed)
+  ///
+  /// This method handles the complete database initialization process for a user:
+  /// 1. Opens or creates the user's database
+  /// 2. Checks if the user needs migration from legacy database
+  /// 3. Performs migration if needed
+  ///
+  /// If database initialization fails, the error is logged but sign-in is
+  /// allowed to proceed. This ensures users can still authenticate even if
+  /// there are database issues (they can use guest mode).
+  ///
+  /// Requirements: 1.1, 1.5, 3.1, 3.5, 4.1
+  Future<void> _initializeUserDatabase(String userId) async {
+    try {
+      _logService.log(
+        'Initializing database for user: $userId',
+        level: app_log.LogLevel.info,
+      );
+
+      final dbService = NewDatabaseService.instance;
+
+      // Trigger database initialization (will open user's database)
+      // This call to database getter will automatically open the correct
+      // user's database or switch to it if a different database is open
+      await dbService.database;
+
+      _logService.log(
+        'Database opened for user: $userId',
+        level: app_log.LogLevel.info,
+      );
+
+      // Check if migration is needed
+      final hasBeenMigrated = await dbService.hasBeenMigrated(userId);
+
+      if (!hasBeenMigrated) {
+        _logService.log(
+          'User not migrated, starting legacy database migration',
+          level: app_log.LogLevel.info,
+        );
+
+        try {
+          await dbService.migrateLegacyDatabase(userId);
+
+          _logService.log(
+            'Legacy database migration completed successfully',
+            level: app_log.LogLevel.info,
+          );
+        } catch (e) {
+          // Log migration error but don't fail sign-in
+          // Migration will be retried on next sign-in
+          _logService.log(
+            'Legacy database migration failed: $e',
+            level: app_log.LogLevel.error,
+          );
+        }
+      } else {
+        _logService.log(
+          'User already migrated, skipping migration',
+          level: app_log.LogLevel.debug,
+        );
+      }
+
+      _logService.log(
+        'Database initialized successfully for user: $userId',
+        level: app_log.LogLevel.info,
+      );
+    } catch (e, stackTrace) {
+      // Log error but don't throw - allow sign in to proceed even if database init fails
+      // User can still use the app in guest mode or retry later
+      _logService.log(
+        'Failed to initialize database for user $userId: $e\nStack trace: $stackTrace',
+        level: app_log.LogLevel.error,
+      );
+
+      // Don't throw - allow sign in to proceed
+      // The database will be initialized on next operation if this fails
     }
   }
 

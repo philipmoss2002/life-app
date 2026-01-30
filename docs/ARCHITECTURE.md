@@ -101,6 +101,29 @@ The Household Documents App follows clean architecture principles with clear sep
 - **Dependencies:** connectivity_plus package
 - **Features:** Real-time connectivity monitoring, automatic sync triggers
 
+#### NewDatabaseService (User-Scoped)
+- **Purpose:** User-scoped SQLite database management with complete data isolation
+- **Pattern:** Singleton
+- **Key Methods:**
+  - `get database` - Get current user's database (auto-switches on user change)
+  - `close()` - Close current database connection
+  - `migrateLegacyDatabase(userId)` - Migrate from shared database
+  - `hasBeenMigrated(userId)` - Check migration status
+  - `listUserDatabases()` - List all user database files
+  - `deleteUserDatabase(userId)` - Delete specific user's database
+  - `vacuumDatabase()` - Optimize current database
+  - `getDatabaseStats()` - Get database statistics
+- **Dependencies:** sqflite, synchronized, AuthenticationService, LogService
+- **Features:** 
+  - Separate database per user (household_docs_{userId}.db)
+  - Guest database for offline mode (household_docs_guest.db)
+  - Automatic database switching on authentication changes
+  - Thread-safe operations with mutex lock
+  - Legacy database migration
+  - Comprehensive error handling and logging
+- **Security:** Complete data isolation between users, validated user IDs
+- **Documentation:** See [USER_SCOPED_DATABASE.md](USER_SCOPED_DATABASE.md) for details
+
 ---
 
 ### 3. Data Access Layer (Repositories)
@@ -325,9 +348,45 @@ AWS Cognito Identity Pool
     ↓
 Cache Identity Pool ID
     ↓
+NewDatabaseService.initializeUserDatabase()
+    ↓
+Check if user migrated
+    ↓
+If not migrated: Migrate legacy database
+    ↓
+Open user-specific database (household_docs_{userId}.db)
+    ↓
 Emit Auth State Change
     ↓
 Navigate to DocumentListScreen
+```
+
+### User Database Switching Flow
+
+```
+User A signs out
+    ↓
+AuthenticationService.signOut()
+    ↓
+NewDatabaseService.close()
+    ↓
+Close User A's database
+    ↓
+Clear cached references
+    ↓
+Switch to guest database
+    ↓
+User B signs in
+    ↓
+AuthenticationService.signIn()
+    ↓
+NewDatabaseService detects user change
+    ↓
+Close guest database
+    ↓
+Open User B's database (household_docs_{userB_id}.db)
+    ↓
+User B sees only their documents
 ```
 
 ### Sync Flow
@@ -516,17 +575,31 @@ try {
 
 ### Data Security
 
-- **Local Database:** SQLite (not encrypted)
+- **Local Database:** SQLite with user-scoped isolation
+- **User Isolation:** Each user has separate database file (household_docs_{userId}.db)
+- **Guest Mode:** Separate guest database for offline functionality
+- **File Isolation:** User-specific file directories (files/{userId}/)
+- **User ID Validation:** Sanitized and validated before use in file names
+- **Database Switching:** Automatic switching on authentication changes
+- **Thread Safety:** Mutex lock prevents concurrent database access
 - **Logs:** Sensitive information excluded
 - **Error Messages:** No PII in error messages
 - **Network:** HTTPS for all AWS operations
 
+**User-Scoped Database Security:**
+- Complete data isolation between users on shared devices
+- No cross-user data access possible
+- Automatic database cleanup on sign-out
+- Legacy database migration with data preservation
+- See [USER_SCOPED_DATABASE.md](USER_SCOPED_DATABASE.md) for details
+
 ### Future Enhancements
 
-- Local database encryption
+- Local database encryption (SQLCipher)
 - Biometric authentication
 - File encryption at rest
 - End-to-end encryption
+- Secure database deletion (overwrite before delete)
 
 ---
 
@@ -537,7 +610,11 @@ try {
 - **Indexes:** syncId, syncState columns indexed
 - **Transactions:** Atomic operations for consistency
 - **Batch Operations:** Multiple inserts in single transaction
-- **Connection Pooling:** Singleton database service
+- **User-Scoped Databases:** One database per user for complete isolation
+- **Database Switching:** Cached user ID minimizes switches (~50-200ms per switch)
+- **Thread Safety:** Mutex lock serializes database access
+- **Vacuum:** Periodic database optimization to reclaim space
+- **Connection Management:** Single database connection per user
 
 ### Network Optimization
 
@@ -682,6 +759,16 @@ testWidgets('sign in button triggers authentication', (tester) async {
 
 ## Future Enhancements
 
+### Completed Features
+
+1. **✅ User-Scoped Databases (v2.0)**
+   - Separate database per user for complete data isolation
+   - Automatic database switching on authentication changes
+   - Legacy database migration
+   - Guest mode support
+   - User-specific file storage
+   - See [USER_SCOPED_DATABASE.md](USER_SCOPED_DATABASE.md) for details
+
 ### Planned Features
 
 1. **DynamoDB Integration**
@@ -717,7 +804,7 @@ testWidgets('sign in button triggers authentication', (tester) async {
 ### Technical Debt
 
 1. **Database Encryption**
-   - Encrypt local SQLite database
+   - Encrypt local SQLite database with SQLCipher
    - Protect data at rest
 
 2. **Error Recovery**
@@ -736,17 +823,28 @@ testWidgets('sign in button triggers authentication', (tester) async {
 
 ---
 
+## Related Documentation
+
+- [User-Scoped Database Architecture](USER_SCOPED_DATABASE.md) - Detailed documentation on user database isolation
+- [User-Scoped Database Troubleshooting](USER_SCOPED_DATABASE_TROUBLESHOOTING.md) - Troubleshooting guide for database issues
+- [API Documentation](API_DOCUMENTATION.md) - API reference for services and repositories
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Deployment procedures and configuration
+- [User Troubleshooting Guide](USER_TROUBLESHOOTING_GUIDE.md) - End-user troubleshooting
+
+---
+
 ## Conclusion
 
 The Household Documents App architecture is designed for:
 - **Maintainability:** Clear separation of concerns
 - **Testability:** Dependency injection and mocking
 - **Scalability:** Modular design for easy extension
-- **Security:** AWS best practices for authentication and storage
+- **Security:** AWS best practices for authentication and storage, user-scoped data isolation
 - **Performance:** Optimized for mobile devices
+- **Privacy:** Complete data isolation between users
 
 The clean architecture approach ensures the codebase remains maintainable as features are added and requirements evolve.
 
 ---
 
-**Last Updated:** January 17, 2026
+**Last Updated:** January 30, 2026

@@ -201,5 +201,51 @@ void main() {
       fileCount = fileResult.first['count'] as int;
       expect(fileCount, equals(0));
     });
+
+    test('getDatabaseStats returns comprehensive statistics', () async {
+      final db = await dbService.database;
+
+      // Insert test data
+      await db.insert('documents', {
+        'sync_id': 'test-uuid-1',
+        'title': 'Test Document',
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'sync_state': 'synced',
+      });
+
+      await db.insert('file_attachments', {
+        'sync_id': 'test-uuid-1',
+        'file_name': 'test.pdf',
+        'added_at': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      final stats = await dbService.getDatabaseStats();
+
+      expect(stats, isNotNull);
+      expect(stats['documents'], equals(1));
+      expect(stats['file_attachments'], equals(1));
+      expect(stats['logs'], isA<int>());
+      expect(stats['file_size_bytes'], isA<int>());
+      expect(stats['file_size_mb'], isA<String>());
+      expect(stats['user_id'], isNotNull);
+      expect(stats['database_file'], isNotNull);
+    });
+
+    test('listUserDatabases returns list of database files', () async {
+      final databases = await dbService.listUserDatabases();
+
+      expect(databases, isNotNull);
+      expect(databases, isA<List<String>>());
+      // Should at least contain the current database
+      expect(databases.isNotEmpty, isTrue);
+    });
+
+    test('vacuumDatabase completes without error', () async {
+      // This test just verifies the method can be called without throwing
+      await dbService.vacuumDatabase();
+      // If we get here, vacuum succeeded
+      expect(true, isTrue);
+    });
   });
 }

@@ -13,15 +13,8 @@ void main() async {
   // Initialize timezone data
   tz.initializeTimeZones();
 
-  // Initialize database
-  try {
-    await NewDatabaseService.instance.database;
-    debugPrint('Database initialized successfully');
-  } catch (e) {
-    debugPrint('Failed to initialize database: $e');
-  }
-
   // Initialize Amplify in the background (non-blocking)
+  // Database will be initialized after authentication check
   _initializeAmplifyInBackground();
 
   // Start the app
@@ -74,22 +67,85 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
   final AuthenticationService _authService = AuthenticationService();
   bool _isAuthenticated = false;
   bool _isLoading = true;
+  String _loadingMessage = 'Initializing...';
 
   @override
   void initState() {
     super.initState();
-    _checkAuthStatus();
+    _initializeApp();
   }
 
-  Future<void> _checkAuthStatus() async {
+  /// Initialize app with proper database setup based on authentication status
+  ///
+  /// This method:
+  /// 1. Checks authentication status
+  /// 2. Initializes database for authenticated users (with migration if needed)
+  /// 3. Initializes guest database for unauthenticated users
+  /// 4. Shows progress indicators during migration
+  /// 5. Handles errors gracefully
+  ///
+  /// Requirements: 1.1, 4.1, 6.1
+  Future<void> _initializeApp() async {
     try {
+      setState(() {
+        _loadingMessage = 'Checking authentication...';
+      });
+
+      // Check authentication status
       final isAuth = await _authService.isAuthenticated();
+
+      if (isAuth) {
+        // User is authenticated - initialize their database
+        setState(() {
+          _loadingMessage = 'Loading your data...';
+        });
+
+        try {
+          final userId = await _authService.getUserId();
+
+          // Check if migration is needed
+          final dbService = NewDatabaseService.instance;
+          final needsMigration = !await dbService.hasBeenMigrated(userId);
+
+          if (needsMigration) {
+            setState(() {
+              _loadingMessage =
+                  'Migrating your data...\nThis may take a moment.';
+            });
+          }
+
+          // Initialize database (this will trigger migration if needed)
+          // The database getter will automatically open the correct user's database
+          await dbService.database;
+
+          debugPrint('Database initialized for authenticated user: $userId');
+        } catch (e) {
+          debugPrint('Error initializing user database: $e');
+          // Don't fail - user can still proceed, database will retry on next operation
+        }
+      } else {
+        // User is not authenticated - initialize guest database
+        setState(() {
+          _loadingMessage = 'Starting in guest mode...';
+        });
+
+        try {
+          // Initialize guest database
+          await NewDatabaseService.instance.database;
+          debugPrint('Guest database initialized');
+        } catch (e) {
+          debugPrint('Error initializing guest database: $e');
+          // Don't fail - show error but allow user to proceed
+        }
+      }
+
       setState(() {
         _isAuthenticated = isAuth;
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('Error checking auth status: $e');
+      debugPrint('Error during app initialization: $e');
+      // On error, assume not authenticated and use guest mode
       setState(() {
         _isAuthenticated = false;
         _isLoading = false;
@@ -100,9 +156,20 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
-          child: CircularProgressIndicator(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 24),
+              Text(
+                _loadingMessage,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ],
+          ),
         ),
       );
     }
