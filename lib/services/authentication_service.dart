@@ -107,6 +107,109 @@ class AuthenticationService {
     }
   }
 
+  /// Confirm user sign-up with verification code
+  ///
+  /// Verifies the user's email address using the 6-digit code sent by AWS Cognito.
+  /// Returns an AuthResult indicating successful verification.
+  ///
+  /// Throws [AuthenticationException] for various error conditions:
+  /// - Invalid verification code
+  /// - Code has expired
+  /// - Too many attempts
+  /// - User doesn't exist
+  /// - Already verified or other auth issue
+  Future<AuthResult> confirmSignUp(
+      String email, String confirmationCode) async {
+    try {
+      final result = await Amplify.Auth.confirmSignUp(
+        username: email,
+        confirmationCode: confirmationCode,
+      );
+
+      if (result.isSignUpComplete) {
+        return AuthResult(
+          success: true,
+          message: 'Email verified successfully',
+        );
+      } else {
+        return AuthResult(
+          success: false,
+          message: 'Verification incomplete',
+        );
+      }
+    } on AuthException catch (e) {
+      // Map AWS Cognito errors to user-friendly messages
+      final errorMessage = e.message.toLowerCase();
+
+      if (errorMessage.contains('code mismatch') ||
+          errorMessage.contains('invalid code')) {
+        throw AuthenticationException(
+            'Invalid verification code. Please check and try again.');
+      } else if (errorMessage.contains('expired')) {
+        throw AuthenticationException(
+            'Verification code has expired. Please request a new code.');
+      } else if (errorMessage.contains('limit exceeded') ||
+          errorMessage.contains('too many')) {
+        throw AuthenticationException(
+            'Too many attempts. Please wait a moment and try again.');
+      } else if (errorMessage.contains('user') &&
+          errorMessage.contains('not found')) {
+        throw AuthenticationException(
+            'Account not found. Please sign up again.');
+      } else if (errorMessage.contains('not authorized') ||
+          errorMessage.contains('already confirmed')) {
+        throw AuthenticationException(
+            'Account already verified. Please sign in.');
+      } else if (errorMessage.contains('network')) {
+        throw AuthenticationException(
+            'Network error. Please check your connection.');
+      } else {
+        throw AuthenticationException('Verification failed: ${e.message}');
+      }
+    } catch (e) {
+      throw AuthenticationException('Verification failed. Please try again.');
+    }
+  }
+
+  /// Resend verification code to user's email
+  ///
+  /// Requests AWS Cognito to send a new 6-digit verification code to the user's
+  /// email address. This is useful when the original code expires or is not received.
+  ///
+  /// Throws [AuthenticationException] for various error conditions:
+  /// - Too many resend attempts
+  /// - User doesn't exist
+  /// - Already verified
+  Future<void> resendSignUpCode(String email) async {
+    try {
+      await Amplify.Auth.resendSignUpCode(username: email);
+    } on AuthException catch (e) {
+      // Map AWS Cognito errors to user-friendly messages
+      final errorMessage = e.message.toLowerCase();
+
+      if (errorMessage.contains('limit exceeded') ||
+          errorMessage.contains('too many')) {
+        throw AuthenticationException(
+            'Too many resend attempts. Please wait a moment and try again.');
+      } else if (errorMessage.contains('user') &&
+          errorMessage.contains('not found')) {
+        throw AuthenticationException(
+            'Account not found. Please sign up again.');
+      } else if (errorMessage.contains('not authorized') ||
+          errorMessage.contains('already confirmed')) {
+        throw AuthenticationException(
+            'Account already verified. Please sign in.');
+      } else if (errorMessage.contains('network')) {
+        throw AuthenticationException(
+            'Network error. Please check your connection.');
+      } else {
+        throw AuthenticationException('Failed to resend code: ${e.message}');
+      }
+    } catch (e) {
+      throw AuthenticationException('Failed to resend code. Please try again.');
+    }
+  }
+
   /// Sign out the current user and clear cached credentials
   Future<void> signOut() async {
     try {

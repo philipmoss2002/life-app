@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/authentication_service.dart';
 import '../services/sync_service.dart';
 import 'sign_up_screen.dart';
+import 'new_document_list_screen.dart';
+import 'verify_email_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -47,16 +49,34 @@ class _SignInScreenState extends State<SignInScreen> {
       if (mounted) {
         // Trigger sync on app launch after successful sign in
         _syncService.syncOnAppLaunch();
-
-        // Navigate back to home screen with success
-        Navigator.pop(context, true);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const NewDocumentListScreen(),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _errorMessage = _getErrorMessage(e.toString());
-          _isLoading = false;
-        });
+        // Check for UserNotConfirmedException - navigate to verification screen
+        if (e.toString().contains('not confirmed') ||
+            e.toString().contains('UserNotConfirmedException')) {
+          // Navigate to verification screen with email and fromSignIn flag
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => VerifyEmailScreen(
+                email: _emailController.text.trim(),
+                fromSignIn: true,
+              ),
+            ),
+          );
+        } else {
+          setState(() {
+            _errorMessage = _getErrorMessage(e.toString());
+            _isLoading = false;
+          });
+        }
       }
     }
   }
@@ -65,8 +85,9 @@ class _SignInScreenState extends State<SignInScreen> {
     if (error.contains('UserNotFoundException') ||
         error.contains('NotAuthorizedException')) {
       return 'Invalid email or password.';
-    } else if (error.contains('UserNotConfirmedException')) {
-      return 'Please verify your email before signing in.';
+    } else if (error.contains('UserNotConfirmedException') ||
+        error.contains('not confirmed')) {
+      return 'Please verify your email. Redirecting to verification...';
     } else if (error.contains('NetworkException')) {
       return 'Network error. Please check your connection.';
     } else {
