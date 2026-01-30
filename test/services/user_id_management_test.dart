@@ -112,11 +112,6 @@ void main() {
         // - _getDatabaseFileName creating 'household_docs_guest.db'
         expect(dbService, isNotNull);
       });
-
-      test('Methods support legacy migration (Task 4)', () {
-        // Task 4 will use _getCurrentUserId to identify the user for migration
-        expect(dbService, isNotNull);
-      });
     });
   });
 }

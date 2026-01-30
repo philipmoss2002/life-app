@@ -79,12 +79,11 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
   ///
   /// This method:
   /// 1. Checks authentication status
-  /// 2. Initializes database for authenticated users (with migration if needed)
+  /// 2. Initializes database for authenticated users
   /// 3. Initializes guest database for unauthenticated users
-  /// 4. Shows progress indicators during migration
-  /// 5. Handles errors gracefully
+  /// 4. Handles errors gracefully
   ///
-  /// Requirements: 1.1, 4.1, 6.1
+  /// Requirements: 1.1, 6.1
   Future<void> _initializeApp() async {
     try {
       setState(() {
@@ -103,19 +102,9 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
         try {
           final userId = await _authService.getUserId();
 
-          // Check if migration is needed
-          final dbService = NewDatabaseService.instance;
-          final needsMigration = !await dbService.hasBeenMigrated(userId);
-
-          if (needsMigration) {
-            setState(() {
-              _loadingMessage =
-                  'Migrating your data...\nThis may take a moment.';
-            });
-          }
-
-          // Initialize database (this will trigger migration if needed)
+          // Initialize database
           // The database getter will automatically open the correct user's database
+          final dbService = NewDatabaseService.instance;
           await dbService.database;
 
           debugPrint('Database initialized for authenticated user: $userId');

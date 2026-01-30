@@ -275,18 +275,16 @@ class AuthenticationService {
     }
   }
 
-  /// Initialize database for user (including migration if needed)
+  /// Initialize database for user
   ///
-  /// This method handles the complete database initialization process for a user:
+  /// This method handles the database initialization process for a user:
   /// 1. Opens or creates the user's database
-  /// 2. Checks if the user needs migration from legacy database
-  /// 3. Performs migration if needed
   ///
   /// If database initialization fails, the error is logged but sign-in is
   /// allowed to proceed. This ensures users can still authenticate even if
   /// there are database issues (they can use guest mode).
   ///
-  /// Requirements: 1.1, 1.5, 3.1, 3.5, 4.1
+  /// Requirements: 1.1, 1.5, 3.1, 3.5
   Future<void> _initializeUserDatabase(String userId) async {
     try {
       _logService.log(
@@ -300,42 +298,6 @@ class AuthenticationService {
       // This call to database getter will automatically open the correct
       // user's database or switch to it if a different database is open
       await dbService.database;
-
-      _logService.log(
-        'Database opened for user: $userId',
-        level: app_log.LogLevel.info,
-      );
-
-      // Check if migration is needed
-      final hasBeenMigrated = await dbService.hasBeenMigrated(userId);
-
-      if (!hasBeenMigrated) {
-        _logService.log(
-          'User not migrated, starting legacy database migration',
-          level: app_log.LogLevel.info,
-        );
-
-        try {
-          await dbService.migrateLegacyDatabase(userId);
-
-          _logService.log(
-            'Legacy database migration completed successfully',
-            level: app_log.LogLevel.info,
-          );
-        } catch (e) {
-          // Log migration error but don't fail sign-in
-          // Migration will be retried on next sign-in
-          _logService.log(
-            'Legacy database migration failed: $e',
-            level: app_log.LogLevel.error,
-          );
-        }
-      } else {
-        _logService.log(
-          'User already migrated, skipping migration',
-          level: app_log.LogLevel.debug,
-        );
-      }
 
       _logService.log(
         'Database initialized successfully for user: $userId',
