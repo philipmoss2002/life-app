@@ -360,6 +360,21 @@ class DocumentSyncService {
               syncState
               deleted
               deletedAt
+              fileAttachments {
+                items {
+                  syncId
+                  userId
+                  fileName
+                  label
+                  fileSize
+                  s3Key
+                  filePath
+                  addedAt
+                  contentType
+                  checksum
+                  syncState
+                }
+              }
             }
           }
         }
@@ -411,11 +426,14 @@ class DocumentSyncService {
         createdAt: DateTime.parse(remoteDoc['createdAt'] as String),
         updatedAt: DateTime.parse(remoteDoc['updatedAt'] as String),
         syncState: _mapSyncStateToLocal(remoteDoc['syncState'] as String?),
-        files: [], // Files will be synced separately
+        files: [], // Files handled separately below
       );
 
       // Insert into local database using repository method
       await _documentRepository.insertRemoteDocument(localDoc);
+
+      // Sync file attachments
+      await _syncFileAttachmentsFromMap(remoteDoc);
 
       _logService.log(
         'Created local document from remote: ${remoteDoc['syncId']}',
@@ -448,6 +466,9 @@ class DocumentSyncService {
       );
 
       await _documentRepository.updateDocument(updatedDoc);
+
+      // Sync file attachments
+      await _syncFileAttachmentsFromMap(remoteDoc);
 
       _logService.log(
         'Updated local document from remote: ${remoteDoc['syncId']}',
@@ -660,6 +681,118 @@ class DocumentSyncService {
         return local_sync.SyncState.error;
       default:
         return local_sync.SyncState.pendingUpload;
+    }
+  }
+
+  /// Sync file attachments from remote document data
+  Future<void> _syncFileAttachmentsFromMap(
+      Map<String, dynamic> remoteDoc) async {
+    final syncId = remoteDoc['syncId'] as String;
+    final fileAttachmentsData = remoteDoc['fileAttachments'];
+
+    if (fileAttachmentsData == null) {
+      _logService.log(
+        'No fileAttachments field in remote document: $syncId',
+        level: log_svc.LogLevel.debug,
+      );
+      return;
+    }
+
+    final items = fileAttachmentsData['items'] as List?;
+    if (items == null || items.isEmpty) {
+      _logService.log(
+        'No file attachments to sync for document: $syncId',
+        level: log_svc.LogLevel.debug,
+      );
+      return;
+    }
+
+    try {
+      // Get existing file attachments
+      final existingFiles =
+          await _documentRepository.getFileAttachments(syncId);
+      final existingFileNames = existingFiles.map((f) => f.fileName).toSet();
+
+      _logService.log(
+        'Syncing ${items.length} file attachments for document: $syncId',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Add or update file attachments from remote
+      for (final remoteFile in items) {
+        final fileName = remoteFile['fileName'] as String;
+        final s3Key = remoteFile['s3Key'] as String;
+        final fileSize = remoteFile['fileSize'] as int;
+        final label = remoteFile['label'] as String?;
+        // Note: filePath from remote is the S3 path, not a local path
+        // We should NOT use it as localPath - file needs to be downloaded first
+
+        if (existingFileNames.contains(fileName)) {
+          // Update existing file attachment
+          _logService.log(
+            'Updating existing file attachment: $fileName',
+            level: log_svc.LogLevel.debug,
+          );
+
+          await _documentRepository.updateFileS3Key(
+            syncId: syncId,
+            fileName: fileName,
+            s3Key: s3Key,
+          );
+
+          if (label != null) {
+            await _documentRepository.updateFileLabel(
+              syncId: syncId,
+              fileName: fileName,
+              label: label,
+            );
+          }
+
+          // Don't update localPath from remote - it's the S3 path, not local
+        } else {
+          // Add new file attachment
+          _logService.log(
+            'Adding new file attachment: $fileName',
+            level: log_svc.LogLevel.debug,
+          );
+
+          await _documentRepository.addFileAttachment(
+            syncId: syncId,
+            fileName: fileName,
+            label: label,
+            s3Key: s3Key,
+            fileSize: fileSize,
+            localPath: null, // File not downloaded yet
+          );
+        }
+      }
+
+      // Remove file attachments that no longer exist remotely
+      final remoteFileNames = items.map((f) => f['fileName'] as String).toSet();
+      for (final existingFile in existingFiles) {
+        if (!remoteFileNames.contains(existingFile.fileName)) {
+          _logService.log(
+            'Removing file attachment no longer in remote: ${existingFile.fileName}',
+            level: log_svc.LogLevel.debug,
+          );
+
+          await _documentRepository.deleteFileAttachment(
+            syncId: syncId,
+            fileName: existingFile.fileName,
+          );
+        }
+      }
+
+      _logService.log(
+        'File attachment sync completed for document: $syncId',
+        level: log_svc.LogLevel.info,
+      );
+    } catch (e) {
+      _logService.log(
+        'Error syncing file attachments for document $syncId: $e',
+        level: log_svc.LogLevel.error,
+      );
+      // Don't rethrow - document sync should succeed even if file sync fails
     }
   }
 }

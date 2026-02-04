@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'package:amplify_flutter/amplify_flutter.dart';
-import '../models/Document.dart';
-import 'database_service.dart';
+import '../models/Document.dart' as amplify_doc;
+import '../models/new_document.dart' as local;
+import '../models/sync_state.dart';
+import '../repositories/document_repository.dart';
 import 'auth_token_manager.dart';
-import 'sync_identifier_service.dart';
 
 /// Service responsible for real-time synchronization using GraphQL subscriptions
 /// Handles subscription setup, event processing, and local database updates
@@ -13,9 +14,12 @@ class RealtimeSyncService {
   RealtimeSyncService._internal();
 
   // Subscription management
-  StreamSubscription<GraphQLResponse<Document>>? _documentCreateSubscription;
-  StreamSubscription<GraphQLResponse<Document>>? _documentUpdateSubscription;
-  StreamSubscription<GraphQLResponse<Document>>? _documentDeleteSubscription;
+  StreamSubscription<GraphQLResponse<amplify_doc.Document>>?
+      _documentCreateSubscription;
+  StreamSubscription<GraphQLResponse<amplify_doc.Document>>?
+      _documentUpdateSubscription;
+  StreamSubscription<GraphQLResponse<amplify_doc.Document>>?
+      _documentDeleteSubscription;
 
   // Event controllers for UI notifications
   StreamController<SyncEventNotification> _syncEventController =
@@ -33,7 +37,7 @@ class RealtimeSyncService {
   static const Duration _baseReconnectionDelay = Duration(seconds: 2);
 
   // Services
-  final DatabaseService _databaseService = DatabaseService.instance;
+  final DocumentRepository _documentRepository = DocumentRepository();
   final AuthTokenManager _authManager = AuthTokenManager();
 
   /// Stream of sync events for UI consumption
@@ -115,7 +119,7 @@ class RealtimeSyncService {
       const subscriptionDocument = '''
         subscription OnCreateDocument {
           onCreateDocument {
-            id
+            syncId
             userId
             title
             category
@@ -129,15 +133,30 @@ class RealtimeSyncService {
             conflictId
             deleted
             deletedAt
+            fileAttachments {
+              items {
+                syncId
+                userId
+                fileName
+                label
+                fileSize
+                s3Key
+                filePath
+                addedAt
+                contentType
+                checksum
+                syncState
+              }
+            }
           }
         }
       ''';
 
-      final subscriptionRequest = GraphQLRequest<Document>(
+      final subscriptionRequest = GraphQLRequest<amplify_doc.Document>(
         document: subscriptionDocument,
         variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'onCreateDocument',
-        modelType: Document.classType,
+        modelType: amplify_doc.Document.classType,
       );
 
       _documentCreateSubscription =
@@ -159,7 +178,7 @@ class RealtimeSyncService {
       const subscriptionDocument = '''
         subscription OnUpdateDocument {
           onUpdateDocument {
-            id
+            syncId
             userId
             title
             category
@@ -173,15 +192,30 @@ class RealtimeSyncService {
             conflictId
             deleted
             deletedAt
+            fileAttachments {
+              items {
+                syncId
+                userId
+                fileName
+                label
+                fileSize
+                s3Key
+                filePath
+                addedAt
+                contentType
+                checksum
+                syncState
+              }
+            }
           }
         }
       ''';
 
-      final subscriptionRequest = GraphQLRequest<Document>(
+      final subscriptionRequest = GraphQLRequest<amplify_doc.Document>(
         document: subscriptionDocument,
         variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'onUpdateDocument',
-        modelType: Document.classType,
+        modelType: amplify_doc.Document.classType,
       );
 
       _documentUpdateSubscription =
@@ -203,7 +237,7 @@ class RealtimeSyncService {
       const subscriptionDocument = '''
         subscription OnDeleteDocument {
           onDeleteDocument {
-            id
+            syncId
             userId
             title
             category
@@ -217,15 +251,30 @@ class RealtimeSyncService {
             conflictId
             deleted
             deletedAt
+            fileAttachments {
+              items {
+                syncId
+                userId
+                fileName
+                label
+                fileSize
+                s3Key
+                filePath
+                addedAt
+                contentType
+                checksum
+                syncState
+              }
+            }
           }
         }
       ''';
 
-      final subscriptionRequest = GraphQLRequest<Document>(
+      final subscriptionRequest = GraphQLRequest<amplify_doc.Document>(
         document: subscriptionDocument,
         variables: {}, // No variables needed - owner auth handles filtering
         decodePath: 'onDeleteDocument',
-        modelType: Document.classType,
+        modelType: amplify_doc.Document.classType,
       );
 
       _documentDeleteSubscription =
@@ -242,7 +291,7 @@ class RealtimeSyncService {
   }
 
   /// Handle document creation events from subscription
-  void _handleDocumentCreateEvent(Document? document) async {
+  void _handleDocumentCreateEvent(amplify_doc.Document? document) async {
     if (document == null) return;
 
     try {
@@ -271,7 +320,7 @@ class RealtimeSyncService {
   }
 
   /// Handle document update events from subscription
-  void _handleDocumentUpdateEvent(Document? document) async {
+  void _handleDocumentUpdateEvent(amplify_doc.Document? document) async {
     if (document == null) return;
 
     try {
@@ -279,10 +328,10 @@ class RealtimeSyncService {
 
       // Check for conflicts with local version
       final localDoc = await _getLocalDocument(document.syncId);
-      if (localDoc != null && localDoc.version >= document.version) {
-        // Local version is newer or same - potential conflict
-        _handleVersionConflict(localDoc, document);
-        return;
+      if (localDoc != null) {
+        // For now, always accept remote changes
+        // TODO: Implement proper version conflict detection when local documents have version field
+        safePrint('Local document exists, updating with remote version');
       }
 
       // Update local database
@@ -308,7 +357,7 @@ class RealtimeSyncService {
   }
 
   /// Handle document deletion events from subscription
-  void _handleDocumentDeleteEvent(Document? document) async {
+  void _handleDocumentDeleteEvent(amplify_doc.Document? document) async {
     if (document == null) return;
 
     try {
@@ -337,32 +386,108 @@ class RealtimeSyncService {
   }
 
   /// Update local database with remote document changes
-  Future<void> _updateLocalDocument(Document document) async {
+  Future<void> _updateLocalDocument(amplify_doc.Document amplifyDoc) async {
     // Convert Amplify Document to local Document format
-    final localDocument = _convertAmplifyToLocalDocument(document);
+    final localDocument = _convertAmplifyToLocalDocument(amplifyDoc);
 
     // Check if document exists locally
-    final existingDoc = await _getLocalDocument(document.syncId);
+    final existingDoc =
+        await _documentRepository.getDocument(amplifyDoc.syncId);
 
     if (existingDoc != null) {
       // Update existing document
-      await _databaseService.updateDocument(localDocument);
+      await _documentRepository.updateDocument(localDocument);
     } else {
       // Create new document
-      await _databaseService.createDocument(localDocument);
+      await _documentRepository.insertRemoteDocument(localDocument);
+    }
+
+    // Sync file attachments
+    await _syncFileAttachments(amplifyDoc);
+  }
+
+  /// Sync file attachments from remote document
+  Future<void> _syncFileAttachments(amplify_doc.Document amplifyDoc) async {
+    final fileAttachments = amplifyDoc.fileAttachments;
+    if (fileAttachments == null || fileAttachments.isEmpty) {
+      safePrint(
+          'No file attachments to sync for document: ${amplifyDoc.syncId}');
+      return;
+    }
+
+    try {
+      // Get existing file attachments
+      final existingFiles =
+          await _documentRepository.getFileAttachments(amplifyDoc.syncId);
+      final existingFileNames = existingFiles.map((f) => f.fileName).toSet();
+
+      safePrint(
+          'Syncing ${fileAttachments.length} file attachments for document: ${amplifyDoc.syncId}');
+
+      // Add or update file attachments from remote
+      for (final remoteFile in fileAttachments) {
+        if (existingFileNames.contains(remoteFile.fileName)) {
+          // Update existing file attachment (S3 key, etc.)
+          safePrint(
+              'Updating existing file attachment: ${remoteFile.fileName}');
+
+          await _documentRepository.updateFileS3Key(
+            syncId: amplifyDoc.syncId,
+            fileName: remoteFile.fileName,
+            s3Key: remoteFile.s3Key,
+          );
+
+          // Update label if present
+          if (remoteFile.label != null) {
+            await _documentRepository.updateFileLabel(
+              syncId: amplifyDoc.syncId,
+              fileName: remoteFile.fileName,
+              label: remoteFile.label,
+            );
+          }
+
+          // Don't update localPath from remote - filePath is the S3 path, not local
+        } else {
+          // Add new file attachment
+          safePrint('Adding new file attachment: ${remoteFile.fileName}');
+
+          await _documentRepository.addFileAttachment(
+            syncId: amplifyDoc.syncId,
+            fileName: remoteFile.fileName,
+            label: remoteFile.label,
+            s3Key: remoteFile.s3Key,
+            fileSize: remoteFile.fileSize,
+            localPath: null, // File not downloaded yet
+          );
+        }
+      }
+
+      // Remove file attachments that no longer exist remotely
+      final remoteFileNames = fileAttachments.map((f) => f.fileName).toSet();
+      for (final existingFile in existingFiles) {
+        if (!remoteFileNames.contains(existingFile.fileName)) {
+          safePrint(
+              'Removing file attachment no longer in remote: ${existingFile.fileName}');
+
+          await _documentRepository.deleteFileAttachment(
+            syncId: amplifyDoc.syncId,
+            fileName: existingFile.fileName,
+          );
+        }
+      }
+
+      safePrint(
+          'File attachment sync completed for document: ${amplifyDoc.syncId}');
+    } catch (e) {
+      safePrint('Error syncing file attachments: $e');
+      // Don't rethrow - document sync should succeed even if file sync fails
     }
   }
 
   /// Get local document by ID
-  Future<Document?> _getLocalDocument(String documentId) async {
+  Future<local.Document?> _getLocalDocument(String documentId) async {
     try {
-      final allDocs = await _databaseService.getAllDocuments();
-      for (final doc in allDocs) {
-        if (doc.syncId == documentId) {
-          return doc;
-        }
-      }
-      return null;
+      return await _documentRepository.getDocument(documentId);
     } catch (e) {
       safePrint('Error getting local document: $e');
       return null;
@@ -370,45 +495,51 @@ class RealtimeSyncService {
   }
 
   /// Convert Amplify Document model to local Document model
-  Document _convertAmplifyToLocalDocument(Document amplifyDoc) {
-    // Convert Amplify Document to local Document format using DocumentExtensions
-    // This ensures compatibility with DatabaseService which expects Document objects
-    return Document(
-      syncId: amplifyDoc.syncId ?? SyncIdentifierService.generateValidated(),
-      userId: amplifyDoc.userId,
+  local.Document _convertAmplifyToLocalDocument(
+      amplify_doc.Document amplifyDoc) {
+    return local.Document(
+      syncId: amplifyDoc.syncId,
       title: amplifyDoc.title,
-      category: amplifyDoc.category,
-      filePaths: amplifyDoc.filePaths,
-      renewalDate: amplifyDoc.renewalDate,
+      category: _mapCategoryToLocal(amplifyDoc.category),
+      date: amplifyDoc.renewalDate?.getDateTimeInUtc(),
       notes: amplifyDoc.notes,
-      createdAt: amplifyDoc.createdAt,
-      lastModified: amplifyDoc.lastModified,
-      version: amplifyDoc.version,
-      syncState: amplifyDoc.syncState,
-      conflictId: amplifyDoc.conflictId,
-      deleted: amplifyDoc.deleted,
-      deletedAt: amplifyDoc.deletedAt,
+      createdAt: amplifyDoc.createdAt.getDateTimeInUtc(),
+      updatedAt: amplifyDoc.lastModified.getDateTimeInUtc(),
+      syncState: _mapSyncStateToLocal(amplifyDoc.syncState),
+      files: [], // Files handled separately in _syncFileAttachments
     );
   }
 
-  /// Handle version conflicts between local and remote documents
-  void _handleVersionConflict(Document localDoc, Document remoteDoc) {
-    safePrint('Version conflict detected for document: ${remoteDoc.syncId}');
+  /// Map Amplify category string to local DocumentCategory enum
+  local.DocumentCategory _mapCategoryToLocal(String category) {
+    switch (category.toLowerCase().replaceAll(' ', '')) {
+      case 'carinsurance':
+        return local.DocumentCategory.carInsurance;
+      case 'homeinsurance':
+        return local.DocumentCategory.homeInsurance;
+      case 'holiday':
+        return local.DocumentCategory.holiday;
+      case 'expenses':
+        return local.DocumentCategory.expenses;
+      default:
+        return local.DocumentCategory.other;
+    }
+  }
 
-    final notification = SyncEventNotification(
-      type: SyncEventType.conflictDetected,
-      documentId: remoteDoc.syncId,
-      message: 'Conflict detected for document "${remoteDoc.title}"',
-      timestamp: DateTime.now(),
-      conflictData: {
-        'localVersion': localDoc.version,
-        'remoteVersion': remoteDoc.version,
-        'localTitle': localDoc.title,
-        'remoteTitle': remoteDoc.title,
-      },
-    );
+  /// Map Amplify sync state string to local SyncState enum
+  SyncState _mapSyncStateToLocal(String? syncState) {
+    if (syncState == null) return SyncState.synced;
 
-    _addSyncEvent(notification);
+    switch (syncState.toLowerCase()) {
+      case 'pendingupload':
+        return SyncState.pendingUpload;
+      case 'synced':
+        return SyncState.synced;
+      case 'error':
+        return SyncState.error;
+      default:
+        return SyncState.synced;
+    }
   }
 
   /// Handle subscription errors and implement reconnection logic
