@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/new_document.dart';
 import '../models/file_attachment.dart';
 import '../models/sync_state.dart';
@@ -850,9 +852,7 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                 trailing: file.localPath != null
                     ? const Icon(Icons.check_circle, color: Colors.green)
                     : const Icon(Icons.cloud_download, color: Colors.orange),
-                onTap: file.localPath != null
-                    ? () => _openFile(file.localPath!)
-                    : null,
+                onTap: () => _handleFileTap(file),
               );
             }),
           ],
@@ -955,9 +955,213 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
+  /// Handle file tap - download if needed, then open
+  Future<void> _handleFileTap(FileAttachment file) async {
+    try {
+      // Request storage permission if needed
+      if (!await _requestStoragePermission()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Storage permission is required to view files'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // If file is already downloaded, open it
+      if (file.localPath != null) {
+        await _openFile(file.localPath!);
+        return;
+      }
+
+      // File needs to be downloaded first
+      if (file.s3Key == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File not available for download'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Show downloading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Downloading ${file.displayName}...'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      _logService.log(
+        'Downloading file attachment: ${file.fileName}',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Get identity pool ID for download
+      final identityPoolId = await _authService.getIdentityPoolId();
+
+      // Download the file
+      final localPath = await _fileService.downloadFile(
+        s3Key: file.s3Key!,
+        syncId: widget.document!.syncId,
+        identityPoolId: identityPoolId,
+      );
+
+      _logService.log(
+        'File downloaded successfully: $localPath',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Update the file attachment in database with local path
+      await _documentRepository.updateFileLocalPath(
+        syncId: widget.document!.syncId,
+        fileName: file.fileName,
+        localPath: localPath,
+      );
+
+      // Reload the document to get updated file attachments
+      final updatedDoc =
+          await _documentRepository.getDocument(widget.document!.syncId);
+      if (updatedDoc != null) {
+        setState(() {
+          _files = List.from(updatedDoc.files);
+        });
+      }
+
+      // Open the downloaded file
+      await _openFile(localPath);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${file.displayName} downloaded and opened'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _logService.log(
+        'Error handling file tap: $e',
+        level: log_svc.LogLevel.error,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error downloading file: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Request storage permission for file access
+  Future<bool> _requestStoragePermission() async {
+    try {
+      // On Android 13+ (API 33+), storage permission is not needed for app-scoped storage
+      // The open_file package should work without it
+      // For older Android versions, we need READ_EXTERNAL_STORAGE
+
+      // Check if already granted
+      var status = await Permission.storage.status;
+
+      if (status.isGranted) {
+        return true;
+      }
+
+      // If denied, request it
+      if (status.isDenied) {
+        status = await Permission.storage.request();
+
+        if (status.isGranted) {
+          return true;
+        }
+      }
+
+      // If permanently denied, show settings dialog
+      if (status.isPermanentlyDenied) {
+        if (mounted) {
+          final shouldOpenSettings = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Permission Required'),
+              content: const Text(
+                'Storage permission is required to view files. '
+                'Please grant permission in app settings.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldOpenSettings == true) {
+            await openAppSettings();
+          }
+        }
+        return false;
+      }
+
+      // On Android 13+, the permission might be "restricted" or not applicable
+      // In this case, we should try to open the file anyway
+      _logService.log(
+        'Storage permission status: ${status.name}, attempting to open file anyway',
+        level: log_svc.LogLevel.info,
+      );
+
+      return true; // Try anyway on newer Android versions
+    } catch (e) {
+      _logService.log(
+        'Error checking storage permission: $e',
+        level: log_svc.LogLevel.warning,
+      );
+      // If permission check fails, try to open file anyway
+      return true;
+    }
+  }
+
   Future<void> _openFile(String filePath) async {
     try {
+      _logService.log(
+        'Attempting to open file: $filePath',
+        level: log_svc.LogLevel.info,
+      );
+
+      // Check if file exists
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('File not found at path: $filePath');
+      }
+
+      _logService.log(
+        'File exists, opening with OpenFile package',
+        level: log_svc.LogLevel.info,
+      );
+
       final result = await OpenFile.open(filePath);
+
+      _logService.log(
+        'OpenFile result: ${result.type.name} - ${result.message}',
+        level: log_svc.LogLevel.info,
+      );
 
       if (result.type != ResultType.done) {
         // Show error if file couldn't be opened
@@ -971,6 +1175,11 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
         }
       }
     } catch (e) {
+      _logService.log(
+        'Error opening file: $e',
+        level: log_svc.LogLevel.error,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

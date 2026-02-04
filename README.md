@@ -15,8 +15,11 @@ A Flutter mobile app for managing household documents with cloud sync, built on 
 
 ### Technical Features
 - **Clean Architecture** - Separation of concerns with services, repositories, and models
+- **User-Scoped Databases** - Complete data isolation between users with separate database files
 - **Identity Pool Integration** - Persistent user identity across app reinstalls
 - **Private S3 Storage** - Each user's files are isolated using Identity Pool ID-based paths
+- **Guest Mode** - Full offline functionality without authentication
+- **Automatic Migration** - Seamless migration from legacy shared database
 - **Sync State Management** - Visual indicators for sync status (synced, uploading, downloading, error)
 - **Subscription Gating** - Intelligent subscription checking with caching and fail-safe behavior
 - **Comprehensive Logging** - Built-in logging system for debugging and support
@@ -586,6 +589,29 @@ See `DEPLOYMENT_GUIDE.md` for detailed deployment instructions.
 
 ---
 
+## Documentation
+
+### Architecture Documentation
+- [Architecture Overview](docs/ARCHITECTURE.md) - Complete architecture documentation
+- [User-Scoped Database](docs/USER_SCOPED_DATABASE.md) - User database isolation architecture
+- [User-Scoped Database Troubleshooting](docs/USER_SCOPED_DATABASE_TROUBLESHOOTING.md) - Database troubleshooting guide
+- [User-Scoped Database Quick Reference](docs/USER_SCOPED_DATABASE_QUICK_REFERENCE.md) - Developer quick reference
+- [Subscription Gating Architecture](docs/SUBSCRIPTION_GATING_ARCHITECTURE.md) - Subscription system details
+
+### API Documentation
+- [API Documentation](docs/API_DOCUMENTATION.md) - Service and repository API reference
+- [Sync Service Documentation](docs/SYNC_SERVICE_DOCUMENTATION.md) - Sync service details
+
+### Deployment & Operations
+- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deployment procedures
+- [AWS Troubleshooting Guide](docs/AWS_TROUBLESHOOTING_GUIDE.md) - AWS-specific issues
+- [User Troubleshooting Guide](docs/USER_TROUBLESHOOTING_GUIDE.md) - End-user troubleshooting
+
+### Testing
+- [E2E Testing Guide](E2E_TESTING_GUIDE.md) - Manual testing procedures
+
+---
+
 ## Contributing
 
 This is a personal project, but contributions are welcome:
@@ -608,6 +634,9 @@ This project is open source and available for personal use.
 - Complete rewrite with clean architecture
 - AWS Amplify integration
 - Cloud sync with S3 and Identity Pool
+- **User-scoped databases for complete data isolation**
+- **Guest mode with automatic data migration**
+- **Automatic migration from legacy shared database**
 - **Premium subscription gating for cloud sync**
 - **Intelligent subscription caching (5-minute TTL)**
 - **Comprehensive error handling with fail-safe behavior**
@@ -630,4 +659,4 @@ For questions or support, please check the logs first, then contact support with
 
 ---
 
-**Last Updated:** January 17, 2026
+**Last Updated:** January 30, 2026

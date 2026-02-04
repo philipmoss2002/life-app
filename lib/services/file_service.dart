@@ -4,6 +4,7 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'log_service.dart' as log_svc;
+import 'authentication_service.dart';
 
 /// Custom exceptions for file operations
 class FileUploadException implements Exception {
@@ -37,6 +38,7 @@ class FileService {
   FileService._internal();
 
   final _logService = log_svc.LogService();
+  final _authService = AuthenticationService();
   static const int _maxRetries = 3;
 
   /// Generate S3 path using format: private/{identityPoolId}/documents/{syncId}/{fileName}
@@ -88,7 +90,39 @@ class FileService {
     return pattern.hasMatch(identityId);
   }
 
+  /// Get user-specific file directory
+  /// Returns a directory in the format: {appDir}/files/{userId}/
+  /// For unauthenticated users, returns: {appDir}/files/guest/
+  Future<Directory> _getUserFileDirectory() async {
+    final appDir = await getApplicationDocumentsDirectory();
+
+    String userId = 'guest';
+    try {
+      if (await _authService.isAuthenticated()) {
+        userId = await _authService.getUserId();
+      }
+    } catch (e) {
+      _logService.log(
+        'Failed to get user ID for file storage, using guest: $e',
+        level: log_svc.LogLevel.warning,
+      );
+    }
+
+    final userFileDir = Directory(path.join(appDir.path, 'files', userId));
+
+    if (!await userFileDir.exists()) {
+      await userFileDir.create(recursive: true);
+      _logService.log(
+        'Created user file directory: ${userFileDir.path}',
+        level: log_svc.LogLevel.info,
+      );
+    }
+
+    return userFileDir;
+  }
+
   /// Upload file to S3 with retry logic
+  /// Files are stored in user-specific local directories before upload
   Future<String> uploadFile({
     required String localFilePath,
     required String syncId,
@@ -106,6 +140,34 @@ class FileService {
       level: log_svc.LogLevel.info,
     );
 
+    // Ensure file is in user-specific directory
+    final userDir = await _getUserFileDirectory();
+    final userFilePath = path.join(userDir.path, fileName);
+
+    // Copy to user directory if not already there
+    if (localFilePath != userFilePath) {
+      try {
+        final sourceFile = File(localFilePath);
+        if (await sourceFile.exists()) {
+          await sourceFile.copy(userFilePath);
+          _logService.log(
+            'Copied file to user directory: $userFilePath',
+            level: log_svc.LogLevel.info,
+          );
+        }
+      } catch (e) {
+        _logService.log(
+          'Failed to copy file to user directory: $e',
+          level: log_svc.LogLevel.warning,
+        );
+        // Continue with original path if copy fails
+      }
+    }
+
+    // Use the user-specific path for upload
+    final uploadPath =
+        await File(userFilePath).exists() ? userFilePath : localFilePath;
+
     int attempt = 0;
     Exception? lastException;
 
@@ -113,14 +175,14 @@ class FileService {
       attempt++;
 
       try {
-        final file = File(localFilePath);
+        final file = File(uploadPath);
 
         if (!await file.exists()) {
-          throw FileUploadException('Local file not found: $localFilePath');
+          throw FileUploadException('Local file not found: $uploadPath');
         }
 
         final result = await Amplify.Storage.uploadFile(
-          localFile: AWSFile.fromPath(localFilePath),
+          localFile: AWSFile.fromPath(uploadPath),
           path: StoragePath.fromString(s3Path),
         ).result;
 
@@ -161,6 +223,7 @@ class FileService {
   }
 
   /// Download file from S3 with retry logic
+  /// Files are downloaded to user-specific local directories
   Future<String> downloadFile({
     required String s3Key,
     required String syncId,
@@ -186,16 +249,9 @@ class FileService {
       attempt++;
 
       try {
-        // Create local directory for downloads
-        final appDir = await getApplicationDocumentsDirectory();
-        final downloadDir =
-            Directory(path.join(appDir.path, 'documents', syncId));
-
-        if (!await downloadDir.exists()) {
-          await downloadDir.create(recursive: true);
-        }
-
-        final localPath = path.join(downloadDir.path, fileName);
+        // Use user-specific directory for downloads
+        final userDir = await _getUserFileDirectory();
+        final localPath = path.join(userDir.path, fileName);
 
         final result = await Amplify.Storage.downloadFile(
           path: StoragePath.fromString(s3Key),
@@ -377,6 +433,28 @@ class FileService {
     } catch (e) {
       _logService.log('Failed to delete local file: $localFilePath - $e',
           level: log_svc.LogLevel.error);
+    }
+  }
+
+  /// Clear all files for current user
+  /// Used for cleanup and testing purposes
+  Future<void> clearUserFiles() async {
+    try {
+      final userDir = await _getUserFileDirectory();
+
+      if (await userDir.exists()) {
+        await userDir.delete(recursive: true);
+        _logService.log(
+          'Cleared user files: ${userDir.path}',
+          level: log_svc.LogLevel.info,
+        );
+      }
+    } catch (e) {
+      _logService.log(
+        'Failed to clear user files: $e',
+        level: log_svc.LogLevel.error,
+      );
+      rethrow;
     }
   }
 }

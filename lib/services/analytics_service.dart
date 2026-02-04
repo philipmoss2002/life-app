@@ -96,40 +96,6 @@ class ConflictAnalyticsEvent {
       };
 }
 
-/// Model representing migration analytics
-class MigrationAnalytics {
-  final DateTime timestamp;
-  final String phase;
-  final int totalDocuments;
-  final int migratedDocuments;
-  final int failedDocuments;
-  final double progressPercentage;
-  final String status;
-  final List<String> errors;
-
-  MigrationAnalytics({
-    required this.timestamp,
-    required this.phase,
-    required this.totalDocuments,
-    required this.migratedDocuments,
-    required this.failedDocuments,
-    required this.progressPercentage,
-    required this.status,
-    this.errors = const [],
-  });
-
-  Map<String, dynamic> toJson() => {
-        'timestamp': timestamp.toIso8601String(),
-        'phase': phase,
-        'totalDocuments': totalDocuments,
-        'migratedDocuments': migratedDocuments,
-        'failedDocuments': failedDocuments,
-        'progressPercentage': progressPercentage,
-        'status': status,
-        'errors': errors,
-      };
-}
-
 /// Model representing sync identifier metrics
 class SyncIdentifierMetrics {
   final DateTime timestamp;
@@ -222,7 +188,6 @@ class AnalyticsService {
   final List<AuthAnalyticsEvent> _authEvents = [];
   final List<ConflictAnalyticsEvent> _conflictEvents = [];
   final List<StorageAnalytics> _storageSnapshots = [];
-  final List<MigrationAnalytics> _migrationSnapshots = [];
   final List<SyncIdentifierMetrics> _syncIdMetrics = [];
 
   // Metrics
@@ -248,8 +213,6 @@ class AnalyticsService {
       StreamController<AuthAnalyticsEvent>.broadcast();
   final StreamController<ConflictAnalyticsEvent> _conflictEventController =
       StreamController<ConflictAnalyticsEvent>.broadcast();
-  final StreamController<MigrationAnalytics> _migrationController =
-      StreamController<MigrationAnalytics>.broadcast();
   final StreamController<SyncIdentifierMetrics> _syncIdMetricsController =
       StreamController<SyncIdentifierMetrics>.broadcast();
 
@@ -262,9 +225,6 @@ class AnalyticsService {
   /// Stream of conflict analytics events
   Stream<ConflictAnalyticsEvent> get conflictEventStream =>
       _conflictEventController.stream;
-
-  /// Stream of migration analytics
-  Stream<MigrationAnalytics> get migrationStream => _migrationController.stream;
 
   /// Stream of sync identifier metrics
   Stream<SyncIdentifierMetrics> get syncIdMetricsStream =>
@@ -451,42 +411,6 @@ class AnalyticsService {
         'Analytics: Document created - ID: $documentId, syncId: ${syncId ?? 'none'}, hasSyncId: $hasSyncId');
   }
 
-  /// Track migration progress
-  Future<void> trackMigrationProgress({
-    required String phase,
-    required int totalDocuments,
-    required int migratedDocuments,
-    required int failedDocuments,
-    required String status,
-    List<String> errors = const [],
-  }) async {
-    final progressPercentage = totalDocuments > 0
-        ? ((migratedDocuments + failedDocuments) / totalDocuments) * 100
-        : 0.0;
-
-    final snapshot = MigrationAnalytics(
-      timestamp: DateTime.now(),
-      phase: phase,
-      totalDocuments: totalDocuments,
-      migratedDocuments: migratedDocuments,
-      failedDocuments: failedDocuments,
-      progressPercentage: progressPercentage,
-      status: status,
-      errors: errors,
-    );
-
-    _migrationSnapshots.add(snapshot);
-    _migrationController.add(snapshot);
-
-    // Keep only last 100 snapshots
-    if (_migrationSnapshots.length > 100) {
-      _migrationSnapshots.removeAt(0);
-    }
-
-    safePrint(
-        'Analytics: Migration progress - Phase: $phase, Progress: ${progressPercentage.toStringAsFixed(2)}%, Status: $status');
-  }
-
   /// Track sync identifier metrics snapshot
   Future<void> trackSyncIdentifierMetrics({
     required int totalDocuments,
@@ -613,24 +537,11 @@ class AnalyticsService {
     return snapshots.take(limit).toList();
   }
 
-  /// Get recent migration snapshots
-  List<MigrationAnalytics> getRecentMigrationSnapshots({int limit = 50}) {
-    final snapshots = List<MigrationAnalytics>.from(_migrationSnapshots);
-    snapshots.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return snapshots.take(limit).toList();
-  }
-
   /// Get recent sync identifier metrics
   List<SyncIdentifierMetrics> getRecentSyncIdMetrics({int limit = 50}) {
     final metrics = List<SyncIdentifierMetrics>.from(_syncIdMetrics);
     metrics.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return metrics.take(limit).toList();
-  }
-
-  /// Get latest migration status
-  MigrationAnalytics? getLatestMigrationStatus() {
-    if (_migrationSnapshots.isEmpty) return null;
-    return _migrationSnapshots.last;
   }
 
   /// Get latest sync identifier metrics
@@ -664,9 +575,6 @@ class AnalyticsService {
       },
       'storage':
           _storageSnapshots.isNotEmpty ? _storageSnapshots.last.toJson() : null,
-      'migration': _migrationSnapshots.isNotEmpty
-          ? _migrationSnapshots.last.toJson()
-          : null,
       'syncIdentifiers': {
         'documentsCreatedWithSyncId': _documentsCreatedWithSyncId,
         'documentsCreatedWithoutSyncId': _documentsCreatedWithoutSyncId,
@@ -733,7 +641,6 @@ class AnalyticsService {
     _authEvents.clear();
     _conflictEvents.clear();
     _storageSnapshots.clear();
-    _migrationSnapshots.clear();
     _syncIdMetrics.clear();
     _syncLatencies.clear();
 
@@ -763,7 +670,6 @@ class AnalyticsService {
       _authEvents.clear();
       _conflictEvents.clear();
       _storageSnapshots.clear();
-      _migrationSnapshots.clear();
       _syncIdMetrics.clear();
       _syncLatencies.clear();
 
@@ -811,7 +717,6 @@ class AnalyticsService {
     await _syncEventController.close();
     await _authEventController.close();
     await _conflictEventController.close();
-    await _migrationController.close();
     await _syncIdMetricsController.close();
   }
 }
