@@ -507,13 +507,13 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           // Subscription indicator in app bar
-          if (widget.document != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Center(
-                child: _buildSubscriptionBadge(),
-              ),
-            ),
+          // if (widget.document != null)
+          //   Padding(
+          //     padding: const EdgeInsets.only(right: 8.0),
+          //     child: Center(
+          //       child: _buildSubscriptionBadge(),
+          //     ),
+          //   ),
           if (!_isEditing && widget.document != null)
             IconButton(
               icon: const Icon(Icons.edit),
@@ -666,10 +666,10 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
                         widget.document!.notes!.isNotEmpty)
                       _buildInfoCard('Notes', widget.document!.notes!),
                     if (widget.document!.files.isNotEmpty) _buildFilesCard(),
-                    _buildInfoCard(
-                      'Created',
-                      _formatDate(widget.document!.createdAt),
-                    ),
+                    // _buildInfoCard(
+                    //   'Created',
+                    //   _formatDate(widget.document!.createdAt),
+                    // ),
                     _buildInfoCard(
                       'Last Modified',
                       _formatDate(widget.document!.updatedAt),
@@ -897,6 +897,11 @@ class _NewDocumentDetailScreenState extends State<NewDocumentDetailScreen> {
         icon = Icons.error;
         color = Colors.red;
         status = 'Sync Error';
+        break;
+      case SyncState.localOnly:
+        icon = Icons.cloud_off;
+        color = Colors.grey;
+        status = 'Saved Locally';
         break;
     }
 

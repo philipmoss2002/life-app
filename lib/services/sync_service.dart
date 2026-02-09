@@ -530,6 +530,12 @@ class SyncService {
           'Cannot sync pending documents - no active subscription',
           level: log_svc.LogLevel.warning,
         );
+        final pendingLocalOnlyDocs =
+            await _documentRepository.getDocumentsNeedingUpload();
+        for (final doc in pendingLocalOnlyDocs) {
+          await _documentRepository.updateSyncState(
+              doc.syncId, SyncState.localOnly);
+        }
         return;
       }
 

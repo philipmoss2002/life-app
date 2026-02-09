@@ -240,7 +240,7 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
         break;
       case SyncStatus.completed:
         icon = Icons.cloud_done;
-        color = Colors.green;
+        color = Colors.purple;
         label = 'Synced';
         break;
       case SyncStatus.error:
@@ -414,25 +414,10 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
           ),
         ),
         title: Text(doc.title),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (doc.notes != null && doc.notes!.isNotEmpty)
-              Text(
-                doc.notes!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            const SizedBox(height: 4),
-            _buildSubscriptionBadge(),
-          ],
-        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isAuthenticated) _buildDocumentSyncIndicator(doc.syncState),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right),
+            _buildSubscriptionBadge(),
           ],
         ),
         onTap: () => _handleDocumentTap(doc),
@@ -470,7 +455,7 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
           ),
           const SizedBox(width: 4),
           Text(
-            isCloudSyncEnabled ? 'Cloud Synced' : 'Local Only',
+            isCloudSyncEnabled ? 'Cloud Synced' : 'Device Only',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
@@ -487,6 +472,7 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
     Color color;
     String tooltip;
 
+    ///This is the cloud icon on the list entry
     switch (syncState) {
       case SyncState.synced:
         icon = Icons.cloud_done;
@@ -525,6 +511,11 @@ class _NewDocumentListScreenState extends State<NewDocumentListScreen> {
         icon = Icons.error;
         color = Colors.red;
         tooltip = 'Sync error';
+        break;
+      case SyncState.localOnly:
+        icon = Icons.cloud_off;
+        color = Colors.grey;
+        tooltip = 'Saved Locally';
         break;
     }
 
