@@ -19,6 +19,9 @@ enum SyncState {
 
   /// Sync error occurred
   error,
+
+  /// Saved locally only where no subscription exists
+  localOnly,
 }
 
 /// Extension methods for SyncState
@@ -37,6 +40,9 @@ extension SyncStateExtension on SyncState {
   /// Check if there was an error
   bool get hasError => this == SyncState.error;
 
+  /// Check if the document is local only
+  bool get isLocal => this == SyncState.localOnly;
+
   /// Get a human-readable description
   String get description {
     switch (this) {
@@ -52,6 +58,8 @@ extension SyncStateExtension on SyncState {
         return 'Downloading...';
       case SyncState.error:
         return 'Sync Error';
+      case SyncState.localOnly:
+        return 'Saved Locally';
     }
   }
 }
